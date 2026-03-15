@@ -1,0 +1,193 @@
+import { Hono } from "hono";
+import { createPageTemplate, renderPage } from "../lib/render.js";
+import { generatePagination, topicGotoPage } from "../lib/pagination.js";
+
+const TOPICS_PER_PAGE = 25;
+const POSTS_PER_PAGE = 15;
+
+const viewforum = new Hono();
+
+viewforum.get("/viewforum/:id", async (c) => {
+  const forumId = parseInt(c.req.param("id"), 10);
+  const page = parseInt(c.req.query("page") ?? "1", 10);
+  const user = c.get("user");
+  const supabase = c.get("supabase");
+
+  // Fetch forum details
+  const { data: forum, error: forumError } = await supabase
+    .from("forums")
+    .select("*, categories(cat_title)")
+    .eq("id", forumId)
+    .single();
+
+  if (forumError || !forum) {
+    return c.text("Forum not found", 404);
+  }
+
+  const tpl = createPageTemplate({
+    user: user
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      : null,
+    pageTitle: forum.forum_name,
+  });
+
+  tpl.loadFile("body", "viewforum_body.tpl");
+
+  // Get topic count for pagination
+  const { count: totalTopics } = await supabase
+    .from("topics")
+    .select("*", { count: "exact", head: true })
+    .eq("forum_id", forumId);
+
+  const offset = (page - 1) * TOPICS_PER_PAGE;
+
+  // Fetch topics: stickies and announcements first, then by last post
+  const { data: topics } = await supabase
+    .from("topics")
+    .select(
+      `
+      *,
+      poster:profiles!topics_topic_poster_fkey(username)
+    `
+    )
+    .eq("forum_id", forumId)
+    .order("topic_type", { ascending: false })
+    .order("topic_last_post_id", { ascending: false })
+    .range(offset, offset + TOPICS_PER_PAGE - 1);
+
+  // For each topic, get the last post info
+  const topicIds = topics?.map((t: any) => t.topic_last_post_id).filter(Boolean) ?? [];
+  let lastPosts: Record<number, any> = {};
+  if (topicIds.length > 0) {
+    const { data: posts } = await supabase
+      .from("posts")
+      .select("id, post_time, poster:profiles!posts_poster_id_fkey(username)")
+      .in("id", topicIds);
+    if (posts) {
+      for (const p of posts) {
+        lastPosts[p.id] = p;
+      }
+    }
+  }
+
+  const pagination = generatePagination(
+    `/viewforum/${forumId}`,
+    totalTopics ?? 0,
+    TOPICS_PER_PAGE,
+    page
+  );
+
+  // Assign template variables
+  tpl.assignVars({
+    FORUM_NAME: forum.forum_name,
+    U_VIEW_FORUM: `/viewforum/${forumId}`,
+    U_INDEX: "/",
+    L_INDEX: "Index",
+    L_TOPICS: "Topics",
+    L_REPLIES: "Replies",
+    L_AUTHOR: "Author",
+    L_VIEWS: "Views",
+    L_LASTPOST: "Last Post",
+    L_POST_NEW_TOPIC: "Post new topic",
+    U_POST_NEW_TOPIC: `/posting?mode=newtopic&f=${forumId}`,
+    POST_IMG: "templates/Solaris/images/lang_english/new_topic.gif",
+    L_MODERATOR: "Moderator",
+    MODERATORS: "Admin",
+    LOGGED_IN_USER_LIST: user?.username ?? "",
+    L_MARK_TOPICS_READ: "Mark all topics read",
+    U_MARK_READ: `/viewforum/${forumId}?mark=topics`,
+    L_DISPLAY_TOPICS: "Display topics from previous",
+    L_NO_TOPICS: "There are no topics in this forum.",
+    L_GO: "Go",
+    S_POST_DAYS_ACTION: `/viewforum/${forumId}`,
+    S_SELECT_TOPIC_DAYS:
+      '<select name="topicdays"><option value="0" selected>All Topics</option><option value="1">1 Day</option><option value="7">7 Days</option><option value="14">2 Weeks</option><option value="30">1 Month</option></select>',
+    PAGINATION: pagination.html,
+    PAGE_NUMBER: pagination.pageNumber,
+    S_TIMEZONE: "UTC",
+    JUMPBOX: "",
+    S_AUTH_LIST: "",
+
+    // Folder icons
+    FOLDER_NEW_IMG: "templates/Solaris/images/folder_new.gif",
+    FOLDER_IMG: "templates/Solaris/images/folder.gif",
+    FOLDER_ANNOUNCE_IMG: "templates/Solaris/images/folder_announce.gif",
+    FOLDER_STICKY_IMG: "templates/Solaris/images/folder_sticky.gif",
+    FOLDER_LOCKED_NEW_IMG: "templates/Solaris/images/folder_lock_new.gif",
+    FOLDER_LOCKED_IMG: "templates/Solaris/images/folder_lock.gif",
+    L_NEW_POSTS: "New posts",
+    L_NO_NEW_POSTS: "No new posts",
+    L_ANNOUNCEMENT: "Announcement",
+    L_STICKY: "Sticky",
+    L_NEW_POSTS_TOPIC_LOCKED: "New posts [ Locked ]",
+    L_NO_NEW_POSTS_TOPIC_LOCKED: "No new posts [ Locked ]",
+    L_NEW_POSTS_LOCKED: "New posts [ Locked ]",
+    L_NO_NEW_POSTS_LOCKED: "No new posts [ Locked ]",
+  });
+
+  // Populate topic rows
+  if (topics && topics.length > 0) {
+    for (const topic of topics) {
+      const lastPost = lastPosts[topic.topic_last_post_id];
+      const lastPostTime = lastPost
+        ? new Date(lastPost.post_time).toLocaleString()
+        : "";
+      const lastPostAuthor = lastPost?.poster?.username ?? "";
+
+      // Determine folder icon
+      let folderImg = "templates/Solaris/images/folder.gif";
+      let folderAlt = "No new posts";
+
+      if (topic.topic_status === 1) {
+        // Locked
+        folderImg = "templates/Solaris/images/folder_lock.gif";
+        folderAlt = "Locked";
+      } else if (topic.topic_type === 2) {
+        // Announcement
+        folderImg = "templates/Solaris/images/folder_announce.gif";
+        folderAlt = "Announcement";
+      } else if (topic.topic_type === 1) {
+        // Sticky
+        folderImg = "templates/Solaris/images/folder_sticky.gif";
+        folderAlt = "Sticky";
+      } else if (topic.topic_replies >= 15) {
+        // Hot topic
+        folderImg = "templates/Solaris/images/folder_hot.gif";
+        folderAlt = "Hot topic";
+      }
+
+      // Topic type prefix
+      let topicType = "";
+      if (topic.topic_type === 2)
+        topicType = '<span class="topictitle">[Announcement]</span> ';
+      else if (topic.topic_type === 1)
+        topicType = '<span class="topictitle">[Sticky]</span> ';
+
+      tpl.assignBlockVars("topicrow", {
+        TOPIC_FOLDER_IMG: folderImg,
+        L_TOPIC_FOLDER_ALT: folderAlt,
+        NEWEST_POST_IMG: "",
+        TOPIC_TYPE: topicType,
+        U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
+        TOPIC_TITLE: topic.topic_title,
+        GOTO_PAGE: topicGotoPage(
+          `/viewtopic/${topic.id}`,
+          topic.topic_replies,
+          POSTS_PER_PAGE
+        ),
+        REPLIES: String(topic.topic_replies),
+        TOPIC_AUTHOR: topic.poster?.username ?? "Unknown",
+        VIEWS: String(topic.topic_views),
+        LAST_POST_TIME: lastPostTime,
+        LAST_POST_AUTHOR: lastPostAuthor,
+        LAST_POST_IMG: "",
+      });
+    }
+  } else {
+    tpl.assignBlockVars("switch_no_topics", {});
+  }
+
+  return c.html(renderPage(tpl));
+});
+
+export default viewforum;
