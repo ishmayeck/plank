@@ -692,4 +692,535 @@ async function resyncForum(adminDb: any, forumId: number) {
     .eq("id", forumId);
 }
 
+// ─── User Management ─────────────────────────────────────────
+
+admin.get("/admin/users", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const mode = c.req.query("mode");
+  const username = c.req.query("username");
+  const adminDb = getAdminDb();
+
+  // If editing a specific user
+  if (mode === "edit" && username) {
+    const { data: profile } = await adminDb
+      .from("profiles")
+      .select("*")
+      .eq("username", username)
+      .single();
+
+    if (!profile) return c.text("User not found", 404);
+
+    // Return a simple edit form (not using full template for brevity)
+    const tpl = adminRender("user_select_body.tpl");
+    tpl.assignVars({
+      L_USER_TITLE: `Edit User: ${profile.username}`,
+      L_USER_EXPLAIN: "",
+      L_USER_SELECT: "User",
+      L_LOOK_UP: "Look up",
+      L_FIND_USERNAME: "Find a username",
+      S_USER_ACTION: "/admin/users",
+      S_HIDDEN_FIELDS: "",
+      U_SEARCH_USER: "/search",
+    });
+    // Override body with inline edit form
+    const editHtml = `
+      <h1>Edit User: ${escapeHtml(profile.username)}</h1>
+      <form method="post" action="/admin/users">
+      <input type="hidden" name="user_id" value="${profile.id}" />
+      <input type="hidden" name="mode" value="save" />
+      <table cellspacing="1" cellpadding="4" border="0" class="forumline" width="100%">
+        <tr><th class="thHead" colspan="2">User Details</th></tr>
+        <tr><td class="row1">Username</td><td class="row2"><input class="post" type="text" name="username" value="${escapeHtml(profile.username)}" /></td></tr>
+        <tr><td class="row1">User Level</td><td class="row2">
+          <select name="user_level">
+            <option value="0"${profile.user_level === 0 ? " selected" : ""}>User</option>
+            <option value="2"${profile.user_level === 2 ? " selected" : ""}>Moderator</option>
+            <option value="1"${profile.user_level === 1 ? " selected" : ""}>Admin</option>
+          </select>
+        </td></tr>
+        <tr><td class="row1">Location</td><td class="row2"><input class="post" type="text" name="user_from" value="${escapeHtml(profile.user_from ?? "")}" /></td></tr>
+        <tr><td class="row1">Signature</td><td class="row2"><textarea name="user_sig" rows="4" cols="40">${escapeHtml(profile.user_sig ?? "")}</textarea></td></tr>
+        <tr><td class="row1">Active</td><td class="row2">
+          <input type="radio" name="user_active" value="1"${profile.user_active ? ' checked' : ''} /> Yes
+          <input type="radio" name="user_active" value="0"${!profile.user_active ? ' checked' : ''} /> No
+        </td></tr>
+        <tr><td class="catBottom" colspan="2" align="center">
+          <input type="submit" name="submit" value="Update" class="mainoption" />
+          &nbsp;<input type="submit" name="deleteuser" value="Delete User" class="liteoption" onclick="return confirm('Delete this user?')" />
+        </td></tr>
+      </table></form>`;
+
+    const header = tpl.render("header");
+    const footer = tpl.render("footer");
+    return c.html(header + editHtml + footer);
+  }
+
+  // Show user search form
+  const tpl = adminRender("user_select_body.tpl");
+  tpl.assignVars({
+    L_USER_TITLE: "User Management",
+    L_USER_EXPLAIN: "Search for a user to edit their profile.",
+    L_USER_SELECT: "Select a user",
+    L_LOOK_UP: "Look up",
+    L_FIND_USERNAME: "Find a username",
+    S_USER_ACTION: "/admin/users",
+    S_HIDDEN_FIELDS: "",
+    U_SEARCH_USER: "/search",
+  });
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/users", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const body = await c.req.parseBody();
+  const adminDb = getAdminDb();
+
+  // Search for user
+  if (body.submituser && body.username) {
+    return c.redirect(`/admin/users?mode=edit&username=${encodeURIComponent(body.username as string)}`);
+  }
+
+  // Save user edits
+  if (body.mode === "save" && body.user_id) {
+    const userId = body.user_id as string;
+
+    if (body.deleteuser) {
+      // Delete user
+      await adminDb.from("topics").delete().eq("topic_poster", userId);
+      await adminDb.auth.admin.deleteUser(userId);
+      return c.redirect("/admin/users");
+    }
+
+    const updates: Record<string, any> = {};
+    if (body.username) updates.username = String(body.username).trim();
+    if (body.user_level !== undefined) updates.user_level = parseInt(body.user_level as string, 10);
+    if (body.user_from !== undefined) updates.user_from = String(body.user_from);
+    if (body.user_sig !== undefined) updates.user_sig = String(body.user_sig);
+    if (body.user_active !== undefined) updates.user_active = body.user_active === "1";
+
+    if (Object.keys(updates).length > 0) {
+      await adminDb.from("profiles").update(updates).eq("id", userId);
+    }
+
+    return c.redirect(`/admin/users?mode=edit&username=${encodeURIComponent(updates.username ?? "")}`);
+  }
+
+  return c.redirect("/admin/users");
+});
+
+// ─── Ban Management ──────────────────────────────────────────
+
+admin.get("/admin/bans", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const adminDb = getAdminDb();
+
+  // Get current bans
+  const { data: bans } = await adminDb
+    .from("banlist")
+    .select("*, profiles(username)")
+    .order("ban_start", { ascending: false });
+
+  // Build unban selects
+  let userUnbanSelect = '<select name="unban_userid" multiple size="5">';
+  let emailUnbanSelect = '<select name="unban_email" multiple size="5">';
+  let ipUnbanSelect = '<select name="unban_ip" multiple size="5">';
+
+  if (bans) {
+    for (const ban of bans) {
+      if (ban.ban_userid) {
+        const username = (ban.profiles as any)?.username ?? ban.ban_userid;
+        userUnbanSelect += `<option value="${ban.id}">${escapeHtml(String(username))} (${ban.ban_reason ?? "no reason"})</option>`;
+      }
+      if (ban.ban_email) {
+        emailUnbanSelect += `<option value="${ban.id}">${escapeHtml(ban.ban_email)}</option>`;
+      }
+    }
+  }
+
+  userUnbanSelect += "</select>";
+  emailUnbanSelect += "</select>";
+  ipUnbanSelect += "</select>";
+
+  const tpl = adminRender("user_ban_body.tpl");
+
+  tpl.assignVars({
+    L_BAN_TITLE: "Ban Management",
+    L_BAN_EXPLAIN: "Manage user, email, and IP bans.",
+    S_BANLIST_ACTION: "/admin/bans",
+    L_BAN_USER: "Ban User",
+    L_UNBAN_USER: "Unban User",
+    L_UNBAN_USER_EXPLAIN: "Select users to unban",
+    L_BAN_IP: "Ban IP",
+    L_BAN_IP_EXPLAIN: "Enter an IP address to ban",
+    L_UNBAN_IP: "Unban IP",
+    L_UNBAN_IP_EXPLAIN: "Select IPs to unban",
+    L_BAN_EMAIL: "Ban Email",
+    L_BAN_EMAIL_EXPLAIN: "Enter an email pattern to ban (e.g. *@spam.com)",
+    L_UNBAN_EMAIL: "Unban Email",
+    L_UNBAN_EMAIL_EXPLAIN: "Select emails to unban",
+    L_BAN_EXPLAIN_WARN: "Bans take effect immediately.",
+    L_USERNAME: "Username",
+    L_IP_OR_HOSTNAME: "IP Address",
+    L_EMAIL_ADDRESS: "Email Address",
+    L_FIND_USERNAME: "Find a username",
+    L_SUBMIT: "Submit",
+    L_RESET: "Reset",
+    S_HIDDEN_FIELDS: "",
+    U_SEARCH_USER: "/search",
+    S_UNBAN_USERLIST_SELECT: userUnbanSelect,
+    S_UNBAN_IPLIST_SELECT: ipUnbanSelect,
+    S_UNBAN_EMAILLIST_SELECT: emailUnbanSelect,
+  });
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/bans", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const body = await c.req.parseBody();
+  const adminDb = getAdminDb();
+
+  // Ban user
+  if (body.username && (body.username as string).trim()) {
+    const username = (body.username as string).trim();
+    const { data: profile } = await adminDb
+      .from("profiles")
+      .select("id")
+      .eq("username", username)
+      .single();
+    if (profile) {
+      await adminDb.from("banlist").insert({
+        ban_userid: profile.id,
+        ban_reason: `Banned by admin`,
+      });
+    }
+  }
+
+  // Ban email
+  if (body.ban_email && (body.ban_email as string).trim()) {
+    await adminDb.from("banlist").insert({
+      ban_email: (body.ban_email as string).trim(),
+      ban_reason: "Email banned by admin",
+    });
+  }
+
+  // Unban user
+  if (body.unban_userid) {
+    const ids = Array.isArray(body.unban_userid)
+      ? body.unban_userid.map(Number)
+      : [Number(body.unban_userid)];
+    for (const id of ids) {
+      await adminDb.from("banlist").delete().eq("id", id);
+    }
+  }
+
+  // Unban email
+  if (body.unban_email) {
+    const ids = Array.isArray(body.unban_email)
+      ? body.unban_email.map(Number)
+      : [Number(body.unban_email)];
+    for (const id of ids) {
+      await adminDb.from("banlist").delete().eq("id", id);
+    }
+  }
+
+  return c.redirect("/admin/bans");
+});
+
+// ─── Rank Management ─────────────────────────────────────────
+
+admin.get("/admin/ranks", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const adminDb = getAdminDb();
+  const { data: ranks } = await adminDb
+    .from("ranks")
+    .select("*")
+    .order("rank_min");
+
+  const tpl = adminRender("ranks_list_body.tpl");
+
+  tpl.assignVars({
+    L_RANKS_TITLE: "Rank Management",
+    L_RANKS_TEXT: "Manage user ranks displayed below usernames.",
+    S_RANKS_ACTION: "/admin/ranks",
+    L_RANK: "Rank",
+    L_RANK_MINIMUM: "Minimum Posts",
+    L_SPECIAL_RANK: "Special Rank",
+    L_EDIT: "Edit",
+    L_DELETE: "Delete",
+    L_ADD_RANK: "Add new rank",
+  });
+
+  if (ranks) {
+    let rowIndex = 0;
+    for (const rank of ranks) {
+      tpl.assignBlockVars("ranks", {
+        ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
+        RANK: rank.rank_title + (rank.rank_image ? ` <img src="${rank.rank_image}" alt="" />` : ""),
+        RANK_MIN: rank.rank_special ? "-" : String(rank.rank_min),
+        SPECIAL_RANK: rank.rank_special ? "Yes" : "No",
+        U_RANK_EDIT: `/admin/ranks?mode=edit&id=${rank.id}`,
+        U_RANK_DELETE: `/admin/ranks?mode=delete&id=${rank.id}`,
+      });
+      rowIndex++;
+    }
+  }
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/ranks", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const body = await c.req.parseBody();
+  const adminDb = getAdminDb();
+
+  if (body.add || body.save) {
+    const rankTitle = (body.rank_title as string)?.trim();
+    if (!rankTitle) return c.redirect("/admin/ranks");
+
+    const rankData: Record<string, any> = {
+      rank_title: rankTitle,
+      rank_min: parseInt(body.rank_min as string, 10) || 0,
+      rank_special: body.rank_special === "1",
+      rank_image: (body.rank_image as string)?.trim() || null,
+    };
+
+    if (body.rank_id) {
+      await adminDb
+        .from("ranks")
+        .update(rankData)
+        .eq("id", parseInt(body.rank_id as string, 10));
+    } else {
+      await adminDb.from("ranks").insert(rankData);
+    }
+  }
+
+  return c.redirect("/admin/ranks");
+});
+
+
+// ─── Smilies Management ──────────────────────────────────────
+
+admin.get("/admin/smilies", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const adminDb = getAdminDb();
+  const { data: smilies } = await adminDb
+    .from("smilies")
+    .select("*")
+    .order("smilies_order");
+
+  const tpl = adminRender("smile_list_body.tpl");
+
+  tpl.assignVars({
+    L_SMILEY_TITLE: "Smiley Management",
+    L_SMILEY_TEXT: "Add, edit, and remove smilies available to users.",
+    S_SMILEY_ACTION: "/admin/smilies",
+    L_CODE: "Code",
+    L_SMILE: "Smiley",
+    L_EMOT: "Emotion",
+    L_ACTION: "Action",
+    L_EDIT: "Edit",
+    L_DELETE: "Delete",
+    L_SMILEY_ADD: "Add new smiley",
+    L_IMPORT_PACK: "Import Pack",
+    L_EXPORT_PACK: "Export Pack",
+    S_HIDDEN_FIELDS: "",
+  });
+
+  if (smilies) {
+    let rowIndex = 0;
+    for (const smiley of smilies) {
+      tpl.assignBlockVars("smiles", {
+        ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
+        CODE: smiley.code,
+        SMILEY_IMG: smiley.smile_url,
+        EMOT: smiley.emoticon ?? "",
+        U_SMILEY_EDIT: `/admin/smilies?mode=edit&id=${smiley.id}`,
+        U_SMILEY_DELETE: `/admin/smilies?mode=delete&id=${smiley.id}`,
+      });
+      rowIndex++;
+    }
+  }
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/smilies", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const body = await c.req.parseBody();
+  const adminDb = getAdminDb();
+
+  if (body.add || body.save) {
+    const code = (body.code as string)?.trim();
+    const smileUrl = (body.smile_url as string)?.trim();
+    const emoticon = (body.emoticon as string)?.trim() || "";
+
+    if (!code || !smileUrl) return c.redirect("/admin/smilies");
+
+    const smileyData = { code, smile_url: smileUrl, emoticon };
+
+    if (body.smiley_id) {
+      await adminDb
+        .from("smilies")
+        .update(smileyData)
+        .eq("id", parseInt(body.smiley_id as string, 10));
+    } else {
+      await adminDb.from("smilies").insert(smileyData);
+    }
+  }
+
+  return c.redirect("/admin/smilies");
+});
+
+// ─── Word Censor Management ──────────────────────────────────
+
+admin.get("/admin/words", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const adminDb = getAdminDb();
+  const { data: words } = await adminDb
+    .from("word_censors")
+    .select("*")
+    .order("id");
+
+  const tpl = adminRender("words_list_body.tpl");
+
+  tpl.assignVars({
+    L_WORDS_TITLE: "Word Censor Management",
+    L_WORDS_TEXT: "Manage word filters applied to post content.",
+    S_WORDS_ACTION: "/admin/words",
+    L_WORD: "Word",
+    L_REPLACEMENT: "Replacement",
+    L_ACTION: "Action",
+    L_EDIT: "Edit",
+    L_DELETE: "Delete",
+    L_ADD_WORD: "Add new word",
+    S_HIDDEN_FIELDS: "",
+  });
+
+  if (words) {
+    let rowIndex = 0;
+    for (const word of words) {
+      tpl.assignBlockVars("words", {
+        ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
+        WORD: word.word,
+        REPLACEMENT: word.replacement,
+        U_WORD_EDIT: `/admin/words?mode=edit&id=${word.id}`,
+        U_WORD_DELETE: `/admin/words?mode=delete&id=${word.id}`,
+      });
+      rowIndex++;
+    }
+  }
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/words", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const body = await c.req.parseBody();
+  const adminDb = getAdminDb();
+
+  if (body.add || body.save) {
+    const word = (body.word as string)?.trim();
+    const replacement = (body.replacement as string)?.trim() || "";
+
+    if (!word) return c.redirect("/admin/words");
+
+    const wordData = { word, replacement };
+
+    if (body.word_id) {
+      await adminDb
+        .from("word_censors")
+        .update(wordData)
+        .eq("id", parseInt(body.word_id as string, 10));
+    } else {
+      await adminDb.from("word_censors").insert(wordData);
+    }
+  }
+
+  // Handle delete via query param
+  if (body.delete_id) {
+    await adminDb
+      .from("word_censors")
+      .delete()
+      .eq("id", parseInt(body.delete_id as string, 10));
+  }
+
+  return c.redirect("/admin/words");
+});
+
+// Delete actions via GET for words, smilies, ranks
+admin.get("/admin/word-action", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const mode = c.req.query("mode");
+  const id = parseInt(c.req.query("id") ?? "0", 10);
+  if (!id) return c.redirect("/admin/words");
+
+  const adminDb = getAdminDb();
+  if (mode === "delete") {
+    await adminDb.from("word_censors").delete().eq("id", id);
+  }
+  return c.redirect("/admin/words");
+});
+
+admin.get("/admin/smiley-action", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const mode = c.req.query("mode");
+  const id = parseInt(c.req.query("id") ?? "0", 10);
+  if (!id) return c.redirect("/admin/smilies");
+
+  const adminDb = getAdminDb();
+  if (mode === "delete") {
+    await adminDb.from("smilies").delete().eq("id", id);
+  }
+  return c.redirect("/admin/smilies");
+});
+
+admin.get("/admin/rank-action", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const mode = c.req.query("mode");
+  const id = parseInt(c.req.query("id") ?? "0", 10);
+  if (!id) return c.redirect("/admin/ranks");
+
+  const adminDb = getAdminDb();
+  if (mode === "delete") {
+    await adminDb.from("ranks").delete().eq("id", id);
+  }
+  return c.redirect("/admin/ranks");
+});
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export default admin;
