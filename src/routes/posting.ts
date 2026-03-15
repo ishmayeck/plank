@@ -450,7 +450,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_HIDDEN_FORM_FIELDS: hiddenFields,
     SUBJECT: opts.subject,
     MESSAGE: opts.message,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     TOPIC_REVIEW_BOX: "",
     POLLBOX: "",

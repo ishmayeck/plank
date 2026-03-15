@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 
 const index = new Hono();
 
@@ -49,7 +49,7 @@ index.get("/", async (c) => {
     L_TOPICS: "Topics",
     L_POSTS: "Posts",
     L_LASTPOST: "Last Post",
-    L_WHO_IS_ONLINE: "Who Is Online",
+    L_WHO_IS_ONLINE: "Who is Online",
     L_WHOSONLINE_ADMIN: "Admin",
     L_WHOSONLINE_MOD: "Mod",
     L_ONLINE_EXPLAIN: "",
@@ -59,25 +59,25 @@ index.get("/", async (c) => {
     L_MARK_FORUMS_READ: "Mark all forums read",
 
     // Stats
-    TOTAL_POSTS: `${totalPosts ?? 0} posts total`,
-    TOTAL_USERS: `${totalUsers ?? 0} registered users`,
+    TOTAL_POSTS: `Our users have posted a total of <b>${totalPosts ?? 0}</b> articles`,
+    TOTAL_USERS: `We have <b>${totalUsers ?? 0}</b> registered user${(totalUsers ?? 0) !== 1 ? "s" : ""}`,
     NEWEST_USER: newestUser?.username ?? "Nobody",
-    TOTAL_USERS_ONLINE: "1 user online",
+    TOTAL_USERS_ONLINE: "In total there is <b>1</b> user online :: 0 Registered, 0 Hidden and 1 Guest",
     RECORD_USERS: String(totalUsers ?? 0),
     LOGGED_IN_USER_LIST: user?.username ?? "",
-    CURRENT_TIME: new Date().toUTCString(),
+    CURRENT_TIME: formatPhpBBDate(new Date()),
 
     // Links
     U_VIEWONLINE: "/viewonline",
     U_MARK_READ: "/markread",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
 
     // Login form (shown for logged-out users)
     S_LOGIN_ACTION: "/login",
     L_USERNAME: "Username",
     L_PASSWORD: "Password",
-    L_AUTO_LOGIN: "Log me on automatically",
-    L_LOGIN: "Login",
+    L_AUTO_LOGIN: "Log me on automatically each visit",
+    L_LOGIN: "Log in",
 
     // Search links
     U_SEARCH_NEW: "/search?mode=new",

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
@@ -143,8 +143,8 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     // Labels
     L_AUTHOR: "Author",
     L_MESSAGE: "Message",
-    L_POSTED: "Posted:",
-    L_POST_SUBJECT: "Post subject:",
+    L_POSTED: "Posted",
+    L_POST_SUBJECT: "Post subject",
     L_BACK_TO_TOP: "Back to top",
     L_DISPLAY_POSTS: "Display posts from previous",
     L_GO: "Go",
@@ -152,7 +152,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     // Pagination
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
 
     // Post display form
     S_POST_DAYS_ACTION: `/viewtopic/${topicId}`,
@@ -226,19 +226,19 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         POSTER_RANK: rank.title,
         RANK_IMAGE: rank.image ? `<img src="${rank.image}" alt="${rank.title}" /><br />` : "",
         POSTER_AVATAR: avatar,
-        POSTER_JOINED: `Joined: ${new Date(poster?.user_regdate ?? post.post_time).toLocaleDateString()}`,
+        POSTER_JOINED: `Joined: ${formatPhpBBDate(poster?.user_regdate ?? post.post_time, true)}`,
         POSTER_POSTS: `Posts: ${poster?.user_posts ?? 0}`,
         POSTER_FROM: poster?.user_from ? `Location: ${poster.user_from}` : "",
         U_POST_ID: String(post.id),
         U_MINI_POST: `/viewtopic/${topicId}#${post.id}`,
         MINI_POST_IMG: "templates/Solaris/images/icon_minipost.gif",
         L_MINI_POST_ALT: "Post",
-        POST_DATE: new Date(post.post_time).toLocaleString(),
+        POST_DATE: formatPhpBBDate(post.post_time),
         POST_SUBJECT: applyCensors(postText?.post_subject ?? "", censors),
         MESSAGE: messageHtml,
         SIGNATURE: signature,
         EDITED_MESSAGE: post.post_edit_count > 0
-          ? `Last edited on ${new Date(post.post_edit_time).toLocaleString()} (edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""})`
+          ? `Last edited by ${poster?.username ?? "Unknown"} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`
           : "",
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,

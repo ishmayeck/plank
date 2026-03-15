@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 
 const modcp = new Hono();
@@ -71,7 +71,7 @@ modcp.get("/modcp", async (c) => {
     S_HIDDEN_FIELDS: `<input type="hidden" name="f" value="${forumId}" />`,
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -365,7 +365,7 @@ modcp.get("/modcp/split", async (c) => {
     S_SPLIT_ACTION: "/modcp",
     S_FORUM_SELECT: forumSelect,
     S_HIDDEN_FIELDS: `<input type="hidden" name="topic_id" value="${topicId}" />`,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
   });
 
   if (posts) {
@@ -375,7 +375,7 @@ modcp.get("/modcp/split", async (c) => {
       tpl.assignBlockVars("postrow", {
         ROW_CLASS: rowClass,
         POSTER_NAME: post.poster?.username ?? "Guest",
-        POST_DATE: new Date(post.post_time).toLocaleString(),
+        POST_DATE: formatPhpBBDate(post.post_time),
         POST_SUBJECT: post.posts_text?.post_subject ?? "",
         MESSAGE: parseBBCode(post.posts_text?.post_text ?? ""),
         U_POST_ID: String(post.id),

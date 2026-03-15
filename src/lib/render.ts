@@ -1,6 +1,36 @@
 import { join } from "node:path";
 import { Template } from "../template/engine.js";
 
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Format a date in phpBB2 default style.
+ * Full:      "Sun Mar 15, 2026 2:27 am"
+ * Date-only: "15 Mar 2026"
+ */
+export function formatPhpBBDate(
+  date: Date | string,
+  dateOnly = false
+): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const day = d.getUTCDate().toString().padStart(2, "0");
+  const mon = MONTHS[d.getUTCMonth()];
+  const year = d.getUTCFullYear();
+
+  if (dateOnly) return `${day} ${mon} ${year}`;
+
+  const dayName = DAYS[d.getUTCDay()];
+  let hours = d.getUTCHours();
+  const ampm = hours >= 12 ? "pm" : "am";
+  hours = hours % 12 || 12;
+  const minutes = d.getUTCMinutes().toString().padStart(2, "0");
+  return `${dayName} ${mon} ${day}, ${year} ${hours}:${minutes} ${ampm}`;
+}
+
 const THEME = "Solaris";
 const THEMES_DIR = join(import.meta.dirname, "..", "..", "themes");
 const THEME_DIR = join(THEMES_DIR, THEME);
@@ -46,7 +76,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
     U_GROUP_CP: "/groupcp",
 
     // Auth-dependent labels
-    L_LOGIN_LOGOUT: isLoggedIn ? "Logout" : "Login",
+    L_LOGIN_LOGOUT: isLoggedIn ? "Log out" : "Log in",
     L_FAQ: "FAQ",
     L_SEARCH: "Search",
     L_MEMBERLIST: "Memberlist",
@@ -56,7 +86,9 @@ export function createPageTemplate(ctx: RenderContext): Template {
 
     // PM info
     PRIVATE_MESSAGE_INFO: isLoggedIn
-      ? `${ctx.user!.unreadPms} new message${ctx.user!.unreadPms !== 1 ? "s" : ""}`
+      ? ctx.user!.unreadPms > 0
+        ? `You have <b>${ctx.user!.unreadPms}</b> new message${ctx.user!.unreadPms !== 1 ? "s" : ""}`
+        : "You have no new messages"
       : "",
     PRIVATE_MESSAGE_NEW_FLAG: isLoggedIn && ctx.user!.unreadPms > 0 ? "1" : "0",
     PRIVMSG_IMG: isLoggedIn && ctx.user!.unreadPms > 0

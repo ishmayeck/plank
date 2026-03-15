@@ -11,7 +11,7 @@ auth.get("/login", (c) => {
   const user = c.get("user");
   if (user) return c.redirect("/");
 
-  const tpl = createPageTemplate({ pageTitle: "Login" });
+  const tpl = createPageTemplate({ pageTitle: "Log in" });
   tpl.loadFile("body", "login_body.tpl");
 
   tpl.assignVars({
@@ -56,7 +56,7 @@ auth.post("/login", async (c) => {
 
   if (!profile) {
     // User not found — render login with error
-    const tpl = createPageTemplate({ pageTitle: "Login" });
+    const tpl = createPageTemplate({ pageTitle: "Log in" });
     tpl.loadFile("body", "login_body.tpl");
     tpl.assignVars({
       S_LOGIN_ACTION: "/login",
@@ -93,7 +93,7 @@ auth.post("/login", async (c) => {
   });
 
   if (error || !session.session) {
-    const tpl = createPageTemplate({ pageTitle: "Login" });
+    const tpl = createPageTemplate({ pageTitle: "Log in" });
     tpl.loadFile("body", "login_body.tpl");
     tpl.assignVars({
       S_LOGIN_ACTION: "/login",

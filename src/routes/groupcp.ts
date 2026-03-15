@@ -69,7 +69,7 @@ groupcp.get("/groupcp", async (c) => {
     L_INDEX: "Index",
     S_USERGROUP_ACTION: "/groupcp",
     S_HIDDEN_FIELDS: "",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
 
     L_GROUP_MEMBERSHIP_DETAILS: "Group Membership Details",
@@ -270,7 +270,7 @@ async function renderGroupInfo(c: any, groupId: number) {
 
     PAGINATION: "",
     PAGE_NUMBER: "",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     PENDING_USER_BOX: "",
   });

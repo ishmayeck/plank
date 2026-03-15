@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
 
 const TOPICS_PER_PAGE = 25;
@@ -104,7 +104,7 @@ viewforum.get("/viewforum/:id", async (c) => {
       '<select name="topicdays"><option value="0" selected>All Topics</option><option value="1">1 Day</option><option value="7">7 Days</option><option value="14">2 Weeks</option><option value="30">1 Month</option></select>',
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     S_AUTH_LIST: "",
 
@@ -130,7 +130,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     for (const topic of topics) {
       const lastPost = lastPosts[topic.topic_last_post_id];
       const lastPostTime = lastPost
-        ? new Date(lastPost.post_time).toLocaleString()
+        ? formatPhpBBDate(lastPost.post_time)
         : "";
       const lastPostAuthor = lastPost?.poster?.username ?? "";
 

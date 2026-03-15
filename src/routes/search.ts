@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 
@@ -120,7 +120,7 @@ search.get("/search", async (c) => {
     L_CHARACTERS: "characters of each post",
     L_SEARCH: "Search",
     S_HIDDEN_FIELDS: "",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -283,7 +283,7 @@ async function handleTopicResults(
     L_LASTPOST: "Last Post",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -402,7 +402,7 @@ async function handlePostResults(
     L_SUBJECT: "Subject:",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -424,7 +424,7 @@ async function handlePostResults(
         TOPIC_VIEWS: String(topic?.topic_views ?? 0),
         FORUM_NAME: topic?.forums?.forum_name ?? "",
         U_FORUM: `/viewforum/${topic?.forum_id ?? post.forum_id}`,
-        POST_DATE: new Date(post.post_time).toLocaleString(),
+        POST_DATE: formatPhpBBDate(post.post_time),
         POST_SUBJECT: post.posts_text?.post_subject ?? "",
         U_POST: `/viewtopic/${post.topic_id}#${post.id}`,
         MESSAGE: messagePreview,
@@ -495,7 +495,7 @@ async function handleNewPosts(c: any) {
     L_LASTPOST: "Last Post",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -574,7 +574,7 @@ async function handleUnanswered(c: any) {
     L_LASTPOST: "Last Post",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 

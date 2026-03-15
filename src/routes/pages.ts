@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 
 const pages = new Hono();
 
@@ -101,7 +101,7 @@ pages.get("/faq", async (c) => {
     L_INDEX: "Index",
     L_FAQ_TITLE: "Frequently Asked Questions",
     L_BACK_TO_TOP: "Back to top",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -176,7 +176,7 @@ pages.get("/viewonline", async (c) => {
     L_LAST_UPDATE: "Last Updated",
     L_FORUM_LOCATION: "Forum Location",
     L_ONLINE_EXPLAIN: "Data is based on users active over the past five minutes.",
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     TOTAL_REGISTERED_USERS_ONLINE: `Registered Users Online: ${registered.length}`,
     TOTAL_GUEST_USERS_ONLINE: `Guest Users Online: ${guests.length}`,
@@ -189,7 +189,7 @@ pages.get("/viewonline", async (c) => {
       ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
       USERNAME: profile?.username ?? "Unknown",
       U_USER_PROFILE: `/profile/${profile?.id ?? ""}`,
-      LASTUPDATE: new Date(s.session_time).toLocaleString(),
+      LASTUPDATE: formatPhpBBDate(s.session_time),
       FORUM_LOCATION: s.session_page ?? "Index",
       U_FORUM_LOCATION: "/",
     });
@@ -201,7 +201,7 @@ pages.get("/viewonline", async (c) => {
     tpl.assignBlockVars("guest_user_row", {
       ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
       USERNAME: "Guest",
-      LASTUPDATE: new Date(s.session_time).toLocaleString(),
+      LASTUPDATE: formatPhpBBDate(s.session_time),
       FORUM_LOCATION: s.session_page ?? "Index",
       U_FORUM_LOCATION: "/",
     });

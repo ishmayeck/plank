@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { generatePagination } from "../lib/pagination.js";
@@ -129,7 +129,7 @@ privmsg.get("/privmsg", async (c) => {
     S_HIDDEN_FIELDS: `<input type="hidden" name="folder" value="${folder}" />`,
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     BOX_SIZE_STATUS: "",
     INBOX_LIMIT_IMG_WIDTH: "0",
@@ -155,7 +155,7 @@ privmsg.get("/privmsg", async (c) => {
         U_READ: `/privmsg?mode=read&p=${msg.id}`,
         FROM: otherUser?.username ?? "Unknown",
         U_FROM_USER_PROFILE: `/profile/${otherUser?.id ?? ""}`,
-        DATE: new Date(msg.privmsgs_date).toLocaleString(),
+        DATE: formatPhpBBDate(msg.privmsgs_date),
         S_MARK_ID: String(msg.id),
       });
       rowIndex++;
@@ -246,7 +246,7 @@ async function handleReadPM(c: any) {
     L_TO: "To:",
     MESSAGE_TO: `<a href="/profile/${pm.to_user?.id}">${pm.to_user?.username ?? "Unknown"}</a>`,
     L_POSTED: "Posted:",
-    POST_DATE: new Date(pm.privmsgs_date).toLocaleString(),
+    POST_DATE: formatPhpBBDate(pm.privmsgs_date),
     L_SUBJECT: "Subject:",
     POST_SUBJECT: pm.privmsgs_subject,
     MESSAGE: messageHtml,
@@ -275,7 +275,7 @@ async function handleReadPM(c: any) {
     ICQ_IMG: "",
     ICQ_STATUS_IMG: "",
 
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -359,7 +359,7 @@ async function handleComposePM(c: any) {
     S_HIDDEN_FORM_FIELDS: '<input type="hidden" name="mode" value="post" />',
     SUBJECT: subject,
     MESSAGE: message,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     TOPIC_REVIEW_BOX: "",
     POLLBOX: "",

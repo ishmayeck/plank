@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 
@@ -55,7 +55,7 @@ profile.get("/profile/:id", async (c) => {
     user: user
       ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
       : null,
-    pageTitle: `${profileData.username}'s Profile`,
+    pageTitle: "Viewing profile",
   });
 
   tpl.loadFile("body", "profile_view_body.tpl");
@@ -67,19 +67,19 @@ profile.get("/profile/:id", async (c) => {
   tpl.assignVars({
     U_INDEX: "/",
     L_INDEX: "Index",
-    L_VIEWING_PROFILE: `Viewing profile - ${profileData.username}`,
+    L_VIEWING_PROFILE: `Viewing profile :: ${profileData.username}`,
     L_AVATAR: "Avatar",
-    L_ABOUT_USER: `About ${profileData.username}`,
+    L_ABOUT_USER: `All about ${profileData.username}`,
     USERNAME: profileData.username,
     AVATAR_IMG: avatarImg,
     POSTER_RANK: rank.title,
 
     L_JOINED: "Joined:",
-    JOINED: regDate.toLocaleDateString(),
+    JOINED: formatPhpBBDate(regDate, true),
 
     L_TOTAL_POSTS: "Total posts:",
     POSTS: String(profileData.user_posts ?? 0),
-    POST_PERCENT_STATS: `${postPercent}% of all posts`,
+    POST_PERCENT_STATS: `${postPercent}% of total`,
     POST_DAY_STATS: `${postsPerDay} posts per day`,
     U_SEARCH_USER: `/search?search_author=${encodeURIComponent(profileData.username)}`,
     L_SEARCH_USER_POSTS: "Find all posts by this user",
@@ -99,7 +99,7 @@ profile.get("/profile/:id", async (c) => {
     INTERESTS: profileData.user_interests ?? "",
 
     // Contact section
-    L_CONTACT: "Contact",
+    L_CONTACT: `Contact ${profileData.username}`,
     L_EMAIL_ADDRESS: "E-mail address:",
     EMAIL_IMG: profileData.user_viewemail
       ? `<a href="mailto:TODO">[email]</a>`
@@ -308,7 +308,7 @@ profile.get("/memberlist", async (c) => {
     L_WEBSITE: "Website",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "UTC",
+    S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
   });
 
@@ -322,7 +322,7 @@ profile.get("/memberlist", async (c) => {
         USERNAME: member.username,
         U_VIEWPROFILE: `/profile/${member.id}`,
         FROM: member.user_from ?? "",
-        JOINED: new Date(member.user_regdate).toLocaleDateString(),
+        JOINED: formatPhpBBDate(member.user_regdate, true),
         POSTS: String(member.user_posts ?? 0),
         PM_IMG: user
           ? `<a href="/privmsg?mode=post&u=${member.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`
