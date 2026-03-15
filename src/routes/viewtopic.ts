@@ -4,6 +4,7 @@ import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
+import { renderPollForTopic } from "./poll.js";
 
 const POSTS_PER_PAGE = 15;
 
@@ -99,6 +100,14 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     .limit(1)
     .single();
 
+  // Render poll if topic has one
+  const showViewResults = c.req.query("poll_results") === "1";
+  const pollHtml = await renderPollForTopic(
+    topicId,
+    user?.id ?? null,
+    showViewResults
+  );
+
   const isLocked = topic.topic_status === 1;
   const canReply = !isLocked && !!user;
   const canPost = !!user;
@@ -157,7 +166,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     S_TOPIC_ADMIN: "",
     S_AUTH_LIST: "",
     JUMPBOX: "",
-    POLL_DISPLAY: "",
+    POLL_DISPLAY: pollHtml,
   });
 
   // Populate post rows

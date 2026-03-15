@@ -10,6 +10,7 @@ import postingRoute from "./routes/posting.js";
 import profileRoute from "./routes/profile.js";
 import privmsgRoute from "./routes/privmsg.js";
 import searchRoute from "./routes/search.js";
+import pollRoute from "./routes/poll.js";
 
 const app = new Hono();
 
@@ -37,5 +38,6 @@ app.route("/", postingRoute);
 app.route("/", profileRoute);
 app.route("/", privmsgRoute);
 app.route("/", searchRoute);
+app.route("/", pollRoute);
 
 export default app;
