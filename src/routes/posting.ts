@@ -459,7 +459,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     L_POST_A: opts.postTitle,
     L_SUBJECT: "Subject",
     L_MESSAGE_BODY: "Message body",
-    L_EMOTICONS: "Smilies",
+    L_EMOTICONS: "Emoticons",
     L_OPTIONS: "Options",
     L_PREVIEW: "Preview",
     L_SUBMIT: "Submit",
@@ -474,21 +474,21 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_SMILIES_COLSPAN: "5",
 
     // BBCode toolbar labels
-    L_BBCODE_B_HELP: "Bold text: [b]text[/b]",
-    L_BBCODE_I_HELP: "Italic text: [i]text[/i]",
-    L_BBCODE_U_HELP: "Underlined text: [u]text[/u]",
-    L_BBCODE_Q_HELP: "Quote text: [quote]text[/quote]",
-    L_BBCODE_C_HELP: "Code display: [code]code[/code]",
-    L_BBCODE_L_HELP: "List: [list]text[/list]",
-    L_BBCODE_O_HELP: "Ordered list: [list=]text[/list]",
-    L_BBCODE_P_HELP: "Insert image: [img]http://image_url[/img]",
-    L_BBCODE_W_HELP: "Insert URL: [url]http://url[/url] or [url=http://url]text[/url]",
+    L_BBCODE_B_HELP: "Bold text: [b]text[/b]  (alt+b)",
+    L_BBCODE_I_HELP: "Italic text: [i]text[/i]  (alt+i)",
+    L_BBCODE_U_HELP: "Underline text: [u]text[/u]  (alt+u)",
+    L_BBCODE_Q_HELP: "Quote text: [quote]text[/quote]  (alt+q)",
+    L_BBCODE_C_HELP: "Code display: [code]code[/code]  (alt+c)",
+    L_BBCODE_L_HELP: "List: [list]text[/list] (alt+l)",
+    L_BBCODE_O_HELP: "Ordered list: [list=]text[/list]  (alt+o)",
+    L_BBCODE_P_HELP: "Insert image: [img]http://image_url[/img]  (alt+p)",
+    L_BBCODE_W_HELP: "Insert URL: [url]http://url[/url] or [url=http://url]URL text[/url]  (alt+w)",
     L_BBCODE_A_HELP: "Close all open bbCode tags",
-    L_BBCODE_S_HELP: "Font color: [color=red]text[/color]",
+    L_BBCODE_S_HELP: "Font color: [color=red]text[/color]  Tip: you can also use color=#FF0000",
     L_BBCODE_F_HELP: "Font size: [size=x-small]small text[/size]",
     L_FONT_COLOR: "Font colour",
     L_FONT_SIZE: "Font size",
-    L_BBCODE_CLOSE_TAGS: "Close All Tags",
+    L_BBCODE_CLOSE_TAGS: "Close Tags",
     L_STYLES_TIP: "Tip: Styles can be applied quickly to selected text.",
 
     // Color options
@@ -522,7 +522,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     L_DISABLE_HTML: "Disable HTML in this post",
     L_DISABLE_BBCODE: "Disable BBCode in this post",
     L_DISABLE_SMILIES: "Disable Smilies in this post",
-    L_ATTACH_SIGNATURE: "Attach signature",
+    L_ATTACH_SIGNATURE: "Attach signature (signatures can be changed in profile)",
     L_NOTIFY_ON_REPLY: "Notify me when a reply is posted",
     L_DELETE_POST: "Delete this post",
     S_HTML_CHECKED: "",
@@ -538,7 +538,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     U_SEARCH_USER: "/search?mode=user",
 
     U_MORE_SMILIES: "/posting_smilies",
-    L_MORE_SMILIES: "View more smilies",
+    L_MORE_SMILIES: "View more Emoticons",
   });
 
   // Switches for the posting form

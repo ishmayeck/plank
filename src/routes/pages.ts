@@ -175,7 +175,7 @@ pages.get("/viewonline", async (c) => {
     L_USERNAME: "Username",
     L_LAST_UPDATE: "Last Updated",
     L_FORUM_LOCATION: "Forum Location",
-    L_ONLINE_EXPLAIN: "Data is based on users active over the past five minutes.",
+    L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     TOTAL_REGISTERED_USERS_ONLINE: `Registered Users Online: ${registered.length}`,

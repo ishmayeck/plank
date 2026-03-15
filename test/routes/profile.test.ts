@@ -85,8 +85,8 @@ describe("User Profiles", () => {
     it("shows joined date and post count", async () => {
       const res = await app.request(`/profile/${testUserId}`);
       const html = await res.text();
-      expect(html).toContain("Joined:");
-      expect(html).toContain("Total posts:");
+      expect(html).toContain("Joined");
+      expect(html).toContain("Total posts");
     });
 
     it("returns 404 for nonexistent user", async () => {

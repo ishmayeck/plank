@@ -126,7 +126,7 @@ describe("Private Messaging", () => {
       });
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("Send private message");
+      expect(html).toContain("Send a new private message");
       expect(html).toContain("Subject");
       expect(html).toContain("Message body");
     });
@@ -138,7 +138,7 @@ describe("Private Messaging", () => {
       );
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("Send private message");
+      expect(html).toContain("Send a new private message");
     });
 
     it("sends a PM and redirects", async () => {

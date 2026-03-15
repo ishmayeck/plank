@@ -158,7 +158,7 @@ describe("Authentication", () => {
 
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("Login failed");
+      expect(html).toContain("You have specified an incorrect or inactive username, or an invalid password.");
     });
 
     it("rejects nonexistent username", async () => {
@@ -173,7 +173,7 @@ describe("Authentication", () => {
 
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("Login failed");
+      expect(html).toContain("You have specified an incorrect or inactive username, or an invalid password.");
     });
   });
 

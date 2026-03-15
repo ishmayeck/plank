@@ -203,11 +203,11 @@ async function renderGroupInfo(c: any, groupId: number) {
   if (isMember) {
     groupDetails = "You are a member of this group";
   } else if (isPending) {
-    groupDetails = "Your membership is pending approval";
+    groupDetails = "Your membership of this group is pending";
   } else if (group.group_type === 0) {
-    groupDetails = "This is an open group";
+    groupDetails = "This is an open group: click to request membership";
   } else if (group.group_type === 1) {
-    groupDetails = "This is a closed group — request membership below";
+    groupDetails = "This is a closed group: no more users accepted";
   }
 
   const groupTypeNames: Record<number, string> = { 0: "Open", 1: "Closed", 2: "Hidden" };
