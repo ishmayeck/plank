@@ -8,6 +8,7 @@ import viewforumRoute from "./routes/viewforum.js";
 import viewtopicRoute from "./routes/viewtopic.js";
 import postingRoute from "./routes/posting.js";
 import profileRoute from "./routes/profile.js";
+import privmsgRoute from "./routes/privmsg.js";
 
 const app = new Hono();
 
@@ -33,5 +34,6 @@ app.route("/", viewforumRoute);
 app.route("/", viewtopicRoute);
 app.route("/", postingRoute);
 app.route("/", profileRoute);
+app.route("/", privmsgRoute);
 
 export default app;
