@@ -73,6 +73,12 @@ export function createPageTemplate(ctx: RenderContext): Template {
     TRANSLATION_INFO: "",
   });
 
+  // Replace phpBB "Powered by" with Plank credit
+  tpl.registerSubstitution(
+    /^.*target="_phpbb".*$/m,
+    '<span class="copyright">Powered by Plank</span>'
+  );
+
   // Auth state switches
   if (isLoggedIn) {
     tpl.assignBlockVars("switch_user_logged_in", {});

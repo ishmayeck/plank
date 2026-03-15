@@ -21,6 +21,7 @@ export class Template {
   private templates: Map<string, string> = new Map();
   private rootVars: Record<string, string> = {};
   private blockData: Record<string, Record<string, string>[]> = {};
+  private substitutions: { pattern: RegExp; replacement: string }[] = [];
 
   constructor(root: string = ".") {
     this.root = resolve(root);
@@ -36,6 +37,14 @@ export class Template {
     const filepath = join(this.root, filename);
     const content = readFileSync(filepath, "utf-8");
     this.templates.set(handle, content);
+  }
+
+  /**
+   * Register a post-render line substitution.
+   * Any output line matching the pattern is replaced entirely.
+   */
+  registerSubstitution(pattern: RegExp, replacement: string): void {
+    this.substitutions.push({ pattern, replacement });
   }
 
   /** Assign root-level template variables. */
@@ -98,7 +107,13 @@ export class Template {
     }
 
     const parsed = this.parseBlocks(code);
-    return this.renderNodes(parsed, this.rootVars, {});
+    let output = this.renderNodes(parsed, this.rootVars, {});
+
+    for (const { pattern, replacement } of this.substitutions) {
+      output = output.replace(pattern, replacement);
+    }
+
+    return output;
   }
 
   // ─── Parser ─────────────────────────────────────────────────────
