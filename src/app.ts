@@ -14,6 +14,7 @@ import pollRoute from "./routes/poll.js";
 import modcpRoute from "./routes/modcp.js";
 import groupcpRoute from "./routes/groupcp.js";
 import adminRoute from "./routes/admin.js";
+import pagesRoute from "./routes/pages.js";
 
 const app = new Hono();
 
@@ -45,5 +46,6 @@ app.route("/", pollRoute);
 app.route("/", modcpRoute);
 app.route("/", groupcpRoute);
 app.route("/", adminRoute);
+app.route("/", pagesRoute);
 
 export default app;
