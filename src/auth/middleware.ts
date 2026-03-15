@@ -59,7 +59,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       // Fetch profile data
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username, user_level, user_new_privmsg:privmsgs(count)")
+        .select("username, user_level")
         .eq("id", data.session.user.id)
         .single();
 
