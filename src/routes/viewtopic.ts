@@ -243,7 +243,9 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,
         DELETE_IMG: deleteImg,
-        IP_IMG: "",
+        IP_IMG: isMod
+          ? `<a href="/modcp/ip?p=${post.id}"><img src="templates/Solaris/images/icon_ip.gif" alt="IP" border="0" /></a>`
+          : "",
         PROFILE_IMG: `<a href="/profile/${poster?.id ?? ""}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`,
         PM_IMG: poster
           ? `<a href="/privmsg?mode=post&u=${poster.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`
