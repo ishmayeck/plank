@@ -31,7 +31,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
     SITENAME: "Plank Forum",
     PAGE_TITLE: ctx.pageTitle ?? "Index",
     T_HEAD_STYLESHEET: "Solaris.css",
-    META: "",
+    META: '<base href="/">',
     NAV_LINKS: "",
 
     // Navigation URLs
