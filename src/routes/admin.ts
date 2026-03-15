@@ -319,8 +319,8 @@ admin.get("/admin/config", async (c) => {
     AVATARS_UPLOAD_YES: (cfg.allow_avatar_upload ?? "1") === "1" ? 'checked="checked"' : "",
     AVATARS_UPLOAD_NO: cfg.allow_avatar_upload === "0" ? 'checked="checked"' : "",
     AVATAR_FILESIZE: cfg.avatar_filesize ?? "6144",
-    AVATAR_MAX_HEIGHT: cfg.avatar_max_height ?? "80",
-    AVATAR_MAX_WIDTH: cfg.avatar_max_width ?? "80",
+    AVATAR_MAX_HEIGHT: cfg.avatar_max_height ?? "200",
+    AVATAR_MAX_WIDTH: cfg.avatar_max_width ?? "200",
     AVATAR_PATH: cfg.avatar_path ?? "images/avatars",
     AVATAR_GALLERY_PATH: cfg.avatar_gallery_path ?? "images/avatars/gallery",
 

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
+import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
 
 const MEMBERS_PER_PAGE = 25;
 
@@ -137,7 +138,8 @@ profile.get("/profile", async (c) => {
 
   if (!profileData) return c.text("Profile not found", 404);
 
-  return c.html(renderProfileEditForm({ user, profileData }));
+  const avatarConfig = await getAvatarConfig(supabase);
+  return c.html(renderProfileEditForm({ user, profileData, avatarConfig }));
 });
 
 profile.post("/profile", async (c) => {
@@ -207,11 +209,13 @@ profile.post("/profile", async (c) => {
         .select("*")
         .eq("id", user.id)
         .single();
+      const avatarConfig = await getAvatarConfig(adminDb);
       return c.html(
         renderProfileEditForm({
           user,
           profileData: profileData!,
           error: "Passwords do not match",
+          avatarConfig,
         })
       );
     }
@@ -224,11 +228,13 @@ profile.post("/profile", async (c) => {
         .select("*")
         .eq("id", user.id)
         .single();
+      const avatarConfig = await getAvatarConfig(adminDb);
       return c.html(
         renderProfileEditForm({
           user,
           profileData: profileData!,
           error: `Password change failed: ${pwError.message}`,
+          avatarConfig,
         })
       );
     }
@@ -385,10 +391,14 @@ interface ProfileEditOpts {
   user: { id: string; username: string; unreadPms: number };
   profileData: any;
   error?: string;
+  avatarConfig?: AvatarConfig;
 }
 
 function renderProfileEditForm(opts: ProfileEditOpts): string {
-  const { user, profileData, error } = opts;
+  const { user, profileData, error, avatarConfig } = opts;
+  const maxW = avatarConfig?.maxWidth ?? 200;
+  const maxH = avatarConfig?.maxHeight ?? 200;
+  const maxFilesize = avatarConfig?.maxFilesize ?? 6144;
 
   const tpl = createPageTemplate({
     user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
@@ -506,14 +516,14 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     // Avatar
     L_AVATAR_PANEL: "Avatar control panel",
     L_AVATAR_EXPLAIN:
-      "Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than 80 pixels, the height no greater than 80 pixels.",
+      `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`,
     L_CURRENT_IMAGE: "Current Image",
     AVATAR: profileData.user_avatar
       ? `<img src="${profileData.user_avatar}" alt="Avatar" />`
       : "No avatar",
     L_DELETE_AVATAR: "Delete Image",
     L_UPLOAD_AVATAR_FILE: "Upload Avatar from your machine",
-    AVATAR_SIZE: "65536",
+    AVATAR_SIZE: String(maxFilesize),
     L_SUBMIT: "Submit",
     L_RESET: "Reset",
     S_HIDDEN_FIELDS: "",

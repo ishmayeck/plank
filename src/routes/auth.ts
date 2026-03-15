@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
+import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
 
 const auth = new Hono();
 
@@ -132,11 +133,13 @@ auth.post("/login", async (c) => {
 
 // ─── Register Page ─────────────────────────────────────────────
 
-auth.get("/register", (c) => {
+auth.get("/register", async (c) => {
   const user = c.get("user");
   if (user) return c.redirect("/");
 
-  return c.html(renderRegisterPage());
+  const supabase = c.get("supabase");
+  const avatarConfig = await getAvatarConfig(supabase);
+  return c.html(renderRegisterPage(undefined, undefined, avatarConfig));
 });
 
 auth.post("/register", async (c) => {
@@ -146,15 +149,18 @@ auth.post("/register", async (c) => {
   const password = body.new_password as string;
   const passwordConfirm = body.password_confirm as string;
 
+  const supabaseForConfig = c.get("supabase");
+  const avatarConfig = await getAvatarConfig(supabaseForConfig);
+
   // Validation
   if (!username || !email || !password) {
-    return c.html(renderRegisterPage("All fields marked with * are required.", { username, email }));
+    return c.html(renderRegisterPage("All fields marked with * are required.", { username, email }, avatarConfig));
   }
   if (password !== passwordConfirm) {
-    return c.html(renderRegisterPage("Passwords do not match.", { username, email }));
+    return c.html(renderRegisterPage("Passwords do not match.", { username, email }, avatarConfig));
   }
   if (username.length < 3 || username.length > 25) {
-    return c.html(renderRegisterPage("Username must be between 3 and 25 characters.", { username, email }));
+    return c.html(renderRegisterPage("Username must be between 3 and 25 characters.", { username, email }, avatarConfig));
   }
 
   const adminSupabase = createClient(
@@ -170,7 +176,7 @@ auth.post("/register", async (c) => {
     .single();
 
   if (existing) {
-    return c.html(renderRegisterPage("This username is already taken.", { username, email }));
+    return c.html(renderRegisterPage("This username is already taken.", { username, email }, avatarConfig));
   }
 
   // Create auth user
@@ -181,7 +187,7 @@ auth.post("/register", async (c) => {
   });
 
   if (authError) {
-    return c.html(renderRegisterPage(`Registration failed: ${authError.message}`, { username, email }));
+    return c.html(renderRegisterPage(`Registration failed: ${authError.message}`, { username, email }, avatarConfig));
   }
 
   // Create profile
@@ -193,7 +199,7 @@ auth.post("/register", async (c) => {
   if (profileError) {
     // Rollback: delete the auth user
     await adminSupabase.auth.admin.deleteUser(authData.user.id);
-    return c.html(renderRegisterPage(`Registration failed: ${profileError.message}`, { username, email }));
+    return c.html(renderRegisterPage(`Registration failed: ${profileError.message}`, { username, email }, avatarConfig));
   }
 
   // Auto sign in
@@ -235,8 +241,13 @@ auth.get("/logout", async (c) => {
 
 function renderRegisterPage(
   error?: string,
-  values?: { username?: string; email?: string }
+  values?: { username?: string; email?: string },
+  avatarConfig?: AvatarConfig
 ): string {
+  const maxW = avatarConfig?.maxWidth ?? 200;
+  const maxH = avatarConfig?.maxHeight ?? 200;
+  const maxFilesize = avatarConfig?.maxFilesize ?? 6144;
+
   const tpl = createPageTemplate({ pageTitle: "Register" });
   tpl.loadFile("body", "profile_add_body.tpl");
 
@@ -293,7 +304,7 @@ function renderRegisterPage(
     L_SUBMIT: "Submit",
     L_RESET: "Reset",
     L_AVATAR_PANEL: "Avatar control panel",
-    L_AVATAR_EXPLAIN: "Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than 80 pixels, the height no greater than 80 pixels.",
+    L_AVATAR_EXPLAIN: `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`,
     L_CURRENT_IMAGE: "Current Image",
     L_DELETE_AVATAR: "Delete Image",
     L_UPLOAD_AVATAR_FILE: "Upload Avatar from your machine",
@@ -323,7 +334,7 @@ function renderRegisterPage(
     INTERESTS: "",
     SIGNATURE: "",
     AVATAR: "",
-    AVATAR_SIZE: "6144",
+    AVATAR_SIZE: String(maxFilesize),
     LANGUAGE_SELECT: '<option value="english" selected>English</option>',
     STYLE_SELECT: '<option value="Solaris" selected>Solaris</option>',
     TIMEZONE_SELECT: '<option value="0" selected>UTC</option>',
