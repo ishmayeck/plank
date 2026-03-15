@@ -1,0 +1,23 @@
+{
+  "name": "plank",
+  "version": "0.0.1",
+  "description": "A modern forum with phpBB2 template compatibility",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@types/node": "^25.5.0",
+    "hono": "^4.12.8",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}
