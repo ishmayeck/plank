@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import app from "../src/index.js";
+import app from "../src/app.js";
 
 describe("Hono app", () => {
   it("serves the index page with Solaris theme", async () => {
