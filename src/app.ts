@@ -12,6 +12,7 @@ import privmsgRoute from "./routes/privmsg.js";
 import searchRoute from "./routes/search.js";
 import pollRoute from "./routes/poll.js";
 import modcpRoute from "./routes/modcp.js";
+import groupcpRoute from "./routes/groupcp.js";
 
 const app = new Hono();
 
@@ -41,5 +42,6 @@ app.route("/", privmsgRoute);
 app.route("/", searchRoute);
 app.route("/", pollRoute);
 app.route("/", modcpRoute);
+app.route("/", groupcpRoute);
 
 export default app;
