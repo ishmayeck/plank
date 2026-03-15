@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 
@@ -215,9 +215,23 @@ profile.post("/profile", async (c) => {
         })
       );
     }
-    await adminDb.auth.admin.updateUserById(user.id, {
+    const { error: pwError } = await adminDb.auth.admin.updateUserById(user.id, {
       password: newPassword,
     });
+    if (pwError) {
+      const { data: profileData } = await adminDb
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      return c.html(
+        renderProfileEditForm({
+          user,
+          profileData: profileData!,
+          error: `Password change failed: ${pwError.message}`,
+        })
+      );
+    }
   }
 
   return c.redirect(`/profile/${user.id}`);
@@ -383,9 +397,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
 
   tpl.loadFile("body", "profile_add_body.tpl");
 
-  const errorBox = error
-    ? `<table width="100%" border="0" cellpadding="3" cellspacing="1"><tr><td class="row1" align="center"><span class="gen">${error}</span></td></tr></table><br />`
-    : "";
+  const errorBox = error ? renderErrorBox(error) : "";
 
   tpl.assignVars({
     S_PROFILE_ACTION: "/profile",

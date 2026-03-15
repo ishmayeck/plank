@@ -89,9 +89,7 @@ index.get("/", async (c) => {
     LAST_VISIT_DATE: "",
   });
 
-  if (user) {
-    tpl.assignBlockVars("switch_user_logged_in", {});
-  } else {
+  if (!user) {
     tpl.assignBlockVars("switch_allow_autologin", {});
   }
 

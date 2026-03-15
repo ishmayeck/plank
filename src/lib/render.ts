@@ -130,3 +130,14 @@ export function renderPage(
 ): string {
   return tpl.render("header") + tpl.render(bodyHandle) + tpl.render("footer");
 }
+
+/**
+ * Render an error box using error_body.tpl, matching phpBB2's error display.
+ * Returns an HTML string suitable for the {ERROR_BOX} template variable.
+ */
+export function renderErrorBox(message: string): string {
+  const tpl = new Template(THEME_DIR);
+  tpl.loadFile("error", "error_body.tpl");
+  tpl.assignVars({ ERROR_MESSAGE: message });
+  return tpl.render("error");
+}

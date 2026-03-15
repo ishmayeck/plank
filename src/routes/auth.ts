@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
 
 const auth = new Hono();
 
@@ -243,9 +243,7 @@ function renderRegisterPage(
   tpl.assignVars({
     S_PROFILE_ACTION: "/register",
     S_FORM_ENCTYPE: "",
-    ERROR_BOX: error
-      ? `<table class="forumline" width="100%" cellspacing="1" cellpadding="4" border="0"><tr><td class="row1"><span class="genmed" style="color:red">${error}</span></td></tr></table><br />`
-      : "",
+    ERROR_BOX: error ? renderErrorBox(error) : "",
     L_INDEX: "Index",
     U_INDEX: "/",
     L_REGISTRATION_INFO: "Registration Information",
