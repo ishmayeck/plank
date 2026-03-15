@@ -16,6 +16,12 @@ app.use(
   serveStatic({ root: "./themes/", rewriteRequestPath: (path) => path.replace("/templates/", "/") })
 );
 
+// Serve phpBB2's root-level images (some templates reference images/spacer.gif etc.)
+app.use(
+  "/images/*",
+  serveStatic({ root: "./themes/Solaris/", })
+);
+
 // Test route: render Solaris header + footer with dummy data
 app.get("/", (c) => {
   const tpl = new Template(THEME_DIR);
