@@ -5,6 +5,7 @@ import { authMiddleware } from "./auth/middleware.js";
 import authRoutes from "./routes/auth.js";
 import indexRoute from "./routes/index.js";
 import viewforumRoute from "./routes/viewforum.js";
+import viewtopicRoute from "./routes/viewtopic.js";
 
 const app = new Hono();
 
@@ -27,5 +28,6 @@ app.use("*", authMiddleware);
 app.route("/", authRoutes);
 app.route("/", indexRoute);
 app.route("/", viewforumRoute);
+app.route("/", viewtopicRoute);
 
 export default app;
