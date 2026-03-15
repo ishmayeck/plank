@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { generatePagination } from "../lib/pagination.js";
@@ -284,17 +284,24 @@ async function handleReadPM(c: any) {
 
 // ─── Compose PM ───────────────────────────────────────────────
 
-async function handleComposePM(c: any) {
+interface ComposeOverrides {
+  recipientUsername?: string;
+  subject?: string;
+  message?: string;
+  error?: string;
+}
+
+async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   const user = c.get("user")!;
   const supabase = c.get("supabase");
 
-  let recipientUsername = "";
-  let subject = "";
-  let message = "";
+  let recipientUsername = overrides?.recipientUsername ?? "";
+  let subject = overrides?.subject ?? "";
+  let message = overrides?.message ?? "";
 
-  // Pre-fill recipient from query param
+  // Pre-fill recipient from query param (skip if re-rendering with overrides)
   const recipientId = c.req.query("u");
-  if (recipientId) {
+  if (recipientId && !overrides) {
     const { data: recipient } = await supabase
       .from("profiles")
       .select("username")
@@ -306,7 +313,7 @@ async function handleComposePM(c: any) {
   // Reply to existing PM
   const replyPmId = c.req.query("p");
   const isQuote = c.req.query("quote") === "1";
-  if (replyPmId) {
+  if (replyPmId && !overrides) {
     const adminDb = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -343,7 +350,7 @@ async function handleComposePM(c: any) {
   tpl.assignVars({
     S_POST_ACTION: "/privmsg",
     POST_PREVIEW_BOX: "",
-    ERROR_BOX: "",
+    ERROR_BOX: overrides?.error ? renderErrorBox(overrides.error) : "",
     U_INDEX: "/",
     L_INDEX: "Index",
     U_VIEW_FORUM: "/privmsg?folder=inbox",
@@ -355,7 +362,7 @@ async function handleComposePM(c: any) {
     L_OPTIONS: "Options",
     L_PREVIEW: "Preview",
     L_SUBMIT: "Submit",
-    L_EMPTY_MESSAGE: "The message body cannot be empty.",
+    L_EMPTY_MESSAGE: "You must enter a message when posting.",
     S_HIDDEN_FORM_FIELDS: '<input type="hidden" name="mode" value="post" />',
     SUBJECT: subject,
     MESSAGE: message,
@@ -475,7 +482,10 @@ privmsg.post("/privmsg", async (c) => {
     const message = (body.message as string) ?? "";
 
     if (!recipientName || !subject || !message.trim()) {
-      return c.text("All fields are required", 400);
+      return handleComposePM(c, {
+        recipientUsername: recipientName, subject, message,
+        error: "All fields are required.",
+      });
     }
 
     // Look up recipient
@@ -486,7 +496,10 @@ privmsg.post("/privmsg", async (c) => {
       .single();
 
     if (!recipient) {
-      return c.text("Recipient not found", 404);
+      return handleComposePM(c, {
+        recipientUsername: recipientName, subject, message,
+        error: "The specified recipient could not be found.",
+      });
     }
 
     const messageHtml = parseBBCode(message);
@@ -506,7 +519,12 @@ privmsg.post("/privmsg", async (c) => {
       .select()
       .single();
 
-    if (error || !pm) return c.text("Failed to send message", 500);
+    if (error || !pm) {
+      return handleComposePM(c, {
+        recipientUsername: recipientName, subject, message,
+        error: "Failed to send message.",
+      });
+    }
 
     await adminDb.from("privmsgs_text").insert({
       privmsgs_text_id: pm.id,

@@ -161,7 +161,9 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("You must enter a message when posting");
     });
 
     it("rejects missing subject for new topic", async () => {
@@ -177,7 +179,9 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Subject must not be empty");
     });
   });
 

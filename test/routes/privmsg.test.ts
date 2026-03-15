@@ -180,7 +180,9 @@ describe("Private Messaging", () => {
         headers: senderHeaders(),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("All fields are required");
     });
 
     it("rejects PM to nonexistent user", async () => {
@@ -196,7 +198,9 @@ describe("Private Messaging", () => {
         headers: senderHeaders(),
       });
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("recipient could not be found");
     });
   });
 

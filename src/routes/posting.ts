@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, type Smiley } from "../lib/smilies.js";
 
@@ -139,7 +139,15 @@ posting.post("/posting", async (c) => {
 
   // Validation (skip for delete mode)
   if (mode !== "delete" && !message.trim()) {
-    return c.text("Message cannot be empty", 400);
+    const supabase = c.get("supabase");
+    const smilies = await loadSmilies(supabase);
+    const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+    return c.html(renderPostingForm({
+      user, mode, forumId, topicId, postId,
+      forumName: forum?.forum_name ?? "", subject, message,
+      postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
+      smilies, error: "You must enter a message when posting.",
+    }));
   }
 
   const adminDb = createClient(
@@ -152,7 +160,15 @@ posting.post("/posting", async (c) => {
 
   if (mode === "newtopic") {
     if (!subject.trim()) {
-      return c.text("Subject is required for new topics", 400);
+      const supabase = c.get("supabase");
+      const smilies = await loadSmilies(supabase);
+      const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+      return c.html(renderPostingForm({
+        user, mode, forumId, topicId, postId,
+        forumName: forum?.forum_name ?? "", subject, message,
+        postTitle: "Post a new topic",
+        smilies, error: "Subject must not be empty.",
+      }));
     }
 
     // Create topic
@@ -408,6 +424,7 @@ interface PostingFormOpts {
   postTitle: string;
   smilies: Smiley[];
   preview?: string;
+  error?: string;
 }
 
 function renderPostingForm(opts: PostingFormOpts): string {
@@ -434,7 +451,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
   tpl.assignVars({
     S_POST_ACTION: "/posting",
     POST_PREVIEW_BOX: previewBox,
-    ERROR_BOX: "",
+    ERROR_BOX: opts.error ? renderErrorBox(opts.error) : "",
     U_INDEX: "/",
     L_INDEX: "Index",
     U_VIEW_FORUM: opts.forumId ? `/viewforum/${opts.forumId}` : "/",
@@ -446,7 +463,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     L_OPTIONS: "Options",
     L_PREVIEW: "Preview",
     L_SUBMIT: "Submit",
-    L_EMPTY_MESSAGE: "The message body cannot be empty.",
+    L_EMPTY_MESSAGE: "You must enter a message when posting.",
     S_HIDDEN_FORM_FIELDS: hiddenFields,
     SUBJECT: opts.subject,
     MESSAGE: opts.message,
