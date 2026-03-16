@@ -67,15 +67,16 @@ describe("BBCode Parser", () => {
 
   describe("code blocks", () => {
     it("parses code", () => {
-      expect(parseBBCode("[code]var x = 1;[/code]")).toBe(
-        '<pre class="code"><code>var x = 1;</code></pre>'
-      );
+      const result = parseBBCode("[code]var x = 1;[/code]");
+      expect(result).toContain('class="code"');
+      expect(result).toContain("var x = 1;");
+      expect(result).toContain("<b>Code:</b>");
     });
 
     it("does not parse bbcode inside code blocks", () => {
-      expect(parseBBCode("[code][b]not bold[/b][/code]")).toBe(
-        '<pre class="code"><code>[b]not bold[/b]</code></pre>'
-      );
+      const result = parseBBCode("[code][b]not bold[/b][/code]");
+      expect(result).toContain("[b]not bold[/b]");
+      expect(result).toContain('class="code"');
     });
   });
 

@@ -120,7 +120,7 @@ export function parseBBCode(text: string): string {
   // Step 4: Restore code blocks
   text = text.replace(/\x00CODE(\d+)\x00/g, (_match, idx) => {
     const code = escapeHtml(codeBlocks[parseInt(idx, 10)]);
-    return `<pre class="code"><code>${code}</code></pre>`;
+    return `</span><table width="90%" cellspacing="1" cellpadding="3" border="0" align="center"><tr> \t  <td><span class="genmed"><b>Code:</b></span></td>\t</tr>\t<tr>\t  <td class="code">${code}</td>\t</tr></table><span class="postbody">`;
   });
 
   return text;
