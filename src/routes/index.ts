@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 
 const index = new Hono();
@@ -6,6 +7,12 @@ const index = new Hono();
 index.get("/", async (c) => {
   const user = c.get("user");
   const supabase = c.get("supabase");
+
+  // Use admin client for session queries (sessions may not be readable via anon)
+  const adminDb = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   const tpl = createPageTemplate({
     user: user ? { id: user.id, username: user.username, unreadPms: user.unreadPms } : null,
@@ -36,10 +43,54 @@ index.get("/", async (c) => {
 
   const { data: newestUser } = await supabase
     .from("profiles")
-    .select("username")
+    .select("id, username")
     .order("user_regdate", { ascending: false })
     .limit(1)
     .single();
+
+  // Online user stats (last 5 minutes)
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: activeSessions } = await adminDb
+    .from("sessions")
+    .select("user_id, session_logged_in, profiles(id, username, user_allow_viewonline)")
+    .gte("session_time", fiveMinAgo);
+
+  const onlineRegistered: { id: string; username: string }[] = [];
+  let hiddenCount = 0;
+  let guestCount = 0;
+
+  const seenUsers = new Set<string>();
+  for (const s of activeSessions ?? []) {
+    if (s.session_logged_in && s.profiles) {
+      const profile = s.profiles as any;
+      if (!seenUsers.has(profile.id)) {
+        seenUsers.add(profile.id);
+        if (profile.user_allow_viewonline) {
+          onlineRegistered.push({ id: profile.id, username: profile.username });
+        } else {
+          hiddenCount++;
+        }
+      }
+    } else {
+      guestCount++;
+    }
+  }
+
+  const totalOnline = onlineRegistered.length + hiddenCount + guestCount;
+  const totalOnlineStr = totalOnline === 1
+    ? `In total there is <b>${totalOnline}</b> user online :: `
+    : `In total there are <b>${totalOnline}</b> users online :: `;
+  const regStr = `${onlineRegistered.length} Registered, `;
+  const hidStr = `${hiddenCount} Hidden and `;
+  const guestStr = guestCount === 1 ? `${guestCount} Guest` : `${guestCount} Guests`;
+
+  const userListStr = onlineRegistered.length > 0
+    ? onlineRegistered.map((u) => `<a href="/profile/${u.id}">${u.username}</a>`).join(", ")
+    : "None";
+
+  const newestUserStr = newestUser
+    ? `The newest registered user is <b><a href="/profile/${newestUser.id}">${newestUser.username}</a></b>`
+    : "The newest registered user is <b>Nobody</b>";
 
   tpl.assignVars({
     // Index labels
@@ -52,19 +103,19 @@ index.get("/", async (c) => {
     L_WHO_IS_ONLINE: "Who is Online",
     L_WHOSONLINE_ADMIN: "Admin",
     L_WHOSONLINE_MOD: "Mod",
-    L_ONLINE_EXPLAIN: "",
+    L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
     L_NEW_POSTS: "New posts",
     L_NO_NEW_POSTS: "No new posts",
     L_FORUM_LOCKED: "Forum locked",
     L_MARK_FORUMS_READ: "Mark all forums read",
 
     // Stats
-    TOTAL_POSTS: `Our users have posted a total of <b>${totalPosts ?? 0}</b> articles`,
+    TOTAL_POSTS: `Our users have posted a total of <b>${totalPosts ?? 0}</b> article${(totalPosts ?? 0) !== 1 ? "s" : ""}`,
     TOTAL_USERS: `We have <b>${totalUsers ?? 0}</b> registered user${(totalUsers ?? 0) !== 1 ? "s" : ""}`,
-    NEWEST_USER: newestUser?.username ?? "Nobody",
-    TOTAL_USERS_ONLINE: "In total there is <b>1</b> user online :: 0 Registered, 0 Hidden and 1 Guest",
-    RECORD_USERS: String(totalUsers ?? 0),
-    LOGGED_IN_USER_LIST: user?.username ?? "",
+    NEWEST_USER: newestUserStr,
+    TOTAL_USERS_ONLINE: totalOnlineStr + regStr + hidStr + guestStr,
+    RECORD_USERS: `Most users ever online was <b>${totalOnline}</b> on ${formatPhpBBDate(new Date())}`,
+    LOGGED_IN_USER_LIST: `Registered users: ${userListStr}`,
     CURRENT_TIME: `The time now is ${formatPhpBBDate(new Date())}`,
 
     // Links
