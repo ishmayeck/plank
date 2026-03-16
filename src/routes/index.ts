@@ -155,16 +155,16 @@ index.get("/", async (c) => {
   if (forumLastPostIds.length > 0) {
     const { data: lastPosts } = await supabase
       .from("posts")
-      .select("id, post_time, poster_id, topic_id, profiles(username)")
+      .select("id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
       .in("id", forumLastPostIds);
 
     if (lastPosts) {
       for (const lp of lastPosts) {
-        const profile = lp.profiles as any;
+        const poster = lp.poster as any;
         lastPostMap[lp.id] = {
           time: lp.post_time,
-          username: profile?.username ?? "Guest",
-          userId: lp.poster_id,
+          username: poster?.username ?? "Guest",
+          userId: poster?.id ?? lp.poster_id,
           topicId: lp.topic_id,
         };
       }

@@ -67,7 +67,7 @@ viewforum.get("/viewforum/:id", async (c) => {
   if (topicIds.length > 0) {
     const { data: posts } = await supabase
       .from("posts")
-      .select("id, post_time, poster:profiles!posts_poster_id_fkey(username)")
+      .select("id, post_time, poster:profiles!posts_poster_id_fkey(id, username)")
       .in("id", topicIds);
     if (posts) {
       for (const p of posts) {
@@ -203,7 +203,13 @@ viewforum.get("/viewforum/:id", async (c) => {
       const lastPostTime = lastPost
         ? formatPhpBBDate(lastPost.post_time)
         : "";
-      const lastPostAuthor = lastPost?.poster?.username ?? "";
+      const lastPostPoster = lastPost?.poster as any;
+      const lastPostAuthor = lastPostPoster
+        ? `<a href="/profile/${lastPostPoster.id}">${lastPostPoster.username}</a>`
+        : "";
+      const lastPostImg = lastPost
+        ? `<a href="/viewtopic/${topic.id}#${topic.topic_last_post_id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="View latest post" title="View latest post" border="0" /></a>`
+        : "";
 
       // Determine folder icon and topic type prefix
       let folderImg = "templates/Solaris/images/folder.gif";
@@ -258,7 +264,7 @@ viewforum.get("/viewforum/:id", async (c) => {
         VIEWS: String(topic.topic_views),
         LAST_POST_TIME: lastPostTime,
         LAST_POST_AUTHOR: lastPostAuthor,
-        LAST_POST_IMG: "",
+        LAST_POST_IMG: lastPostImg,
       });
     }
   } else {
