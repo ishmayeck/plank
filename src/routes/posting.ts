@@ -644,7 +644,7 @@ posting.post("/posting", async (c) => {
 // ─── Rendering Helper ──────────────────────────────────────────
 
 interface PostingFormOpts {
-  user: { id: string; username: string; unreadPms: number; userLevel: number; userSig: string };
+  user: { id: string; username: string; unreadPms: number; userLevel: number; userSig: string; attachSig: boolean };
   mode: string;
   forumId: number | null;
   topicId: number | null;
@@ -765,7 +765,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_HTML_CHECKED: "",
     S_BBCODE_CHECKED: "",
     S_SMILIES_CHECKED: "",
-    S_SIGNATURE_CHECKED: 'checked="checked"',
+    S_SIGNATURE_CHECKED: opts.user.userSig && opts.user.attachSig ? 'checked="checked"' : "",
     S_NOTIFY_CHECKED: "",
     S_TYPE_TOGGLE: opts.topicTypeToggle ?? "",
 

@@ -10,6 +10,7 @@ export interface AuthUser {
   unreadPms: number;
   lastVisit: string | null;
   userSig: string;
+  attachSig: boolean;
 }
 
 // Extend Hono's context variables
@@ -61,7 +62,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       // Fetch profile data
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username, user_level, user_lastvisit, user_sig")
+        .select("username, user_level, user_lastvisit, user_sig, user_attachsig")
         .eq("id", data.session.user.id)
         .single();
 
@@ -74,6 +75,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
           unreadPms: 0, // TODO: query actual count
           lastVisit: profile.user_lastvisit,
           userSig: profile.user_sig ?? "",
+          attachSig: profile.user_attachsig ?? false,
         };
       }
     }
