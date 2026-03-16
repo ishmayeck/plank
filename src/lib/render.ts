@@ -135,6 +135,54 @@ export function renderPage(
 }
 
 /**
+ * Render a forum jumpbox (dropdown selector) using jumpbox.tpl.
+ * Returns HTML string for the {JUMPBOX} template variable.
+ */
+export function renderJumpbox(
+  forums: { id: number; forum_name: string; cat_id?: number }[],
+  categories?: { id: number; cat_title: string }[],
+  selectedForumId?: number
+): string {
+  const tpl = new Template(THEME_DIR);
+  tpl.loadFile("jumpbox", "jumpbox.tpl");
+
+  let options = '<option value="-1">Select a forum</option>';
+  if (categories && categories.length > 0) {
+    const forumsByCat = new Map<number, typeof forums>();
+    for (const f of forums) {
+      const catId = f.cat_id ?? 0;
+      if (!forumsByCat.has(catId)) forumsByCat.set(catId, []);
+      forumsByCat.get(catId)!.push(f);
+    }
+    for (const cat of categories) {
+      const catForums = forumsByCat.get(cat.id) ?? [];
+      if (catForums.length === 0) continue;
+      options += `<option value="-1">&nbsp;</option>`;
+      options += `<option value="-1">${cat.cat_title}</option>`;
+      options += `<option value="-1">----------------</option>`;
+      for (const f of catForums) {
+        const sel = f.id === selectedForumId ? " selected" : "";
+        options += `<option value="${f.id}"${sel}>&nbsp;&nbsp;${f.forum_name}</option>`;
+      }
+    }
+  } else {
+    for (const f of forums) {
+      const sel = f.id === selectedForumId ? " selected" : "";
+      options += `<option value="${f.id}"${sel}>${f.forum_name}</option>`;
+    }
+  }
+
+  tpl.assignVars({
+    S_JUMPBOX_ACTION: "#",
+    L_JUMP_TO: "Jump to",
+    S_JUMPBOX_SELECT: `<select name="f" onchange="if(this.options[this.selectedIndex].value != -1){ window.location='/viewforum/'+this.options[this.selectedIndex].value; }">${options}</select>`,
+    L_GO: "Go",
+  });
+
+  return tpl.render("jumpbox");
+}
+
+/**
  * Render an error box using error_body.tpl, matching phpBB2's error display.
  * Returns an HTML string suitable for the {ERROR_BOX} template variable.
  */
