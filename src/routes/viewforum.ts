@@ -70,6 +70,34 @@ viewforum.get("/viewforum/:id", async (c) => {
     }
   }
 
+  // Fetch forum moderators: groups with auth_mod on this forum, then their members
+  const { data: modGroups } = await supabase
+    .from("auth_access")
+    .select("group_id, groups(group_name, user_group(user_id, profiles(id, username)))")
+    .eq("forum_id", forumId)
+    .eq("auth_mod", true);
+
+  const moderatorNames: { id: string; username: string }[] = [];
+  const seenMods = new Set<string>();
+  if (modGroups) {
+    for (const mg of modGroups) {
+      const group = mg.groups as any;
+      if (group?.user_group) {
+        for (const ug of group.user_group) {
+          const profile = ug.profiles as any;
+          if (profile && !seenMods.has(profile.id)) {
+            seenMods.add(profile.id);
+            moderatorNames.push({ id: profile.id, username: profile.username });
+          }
+        }
+      }
+    }
+  }
+
+  const moderatorsHtml = moderatorNames.length > 0
+    ? moderatorNames.map((m) => `<a href="/profile/${m.id}">${m.username}</a>`).join(", ")
+    : "None";
+
   const pagination = generatePagination(
     `/viewforum/${forumId}`,
     totalTopics ?? 0,
@@ -92,7 +120,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     U_POST_NEW_TOPIC: `/posting?mode=newtopic&f=${forumId}`,
     POST_IMG: "templates/Solaris/images/lang_english/new_topic.gif",
     L_MODERATOR: "Moderator",
-    MODERATORS: "Admin",
+    MODERATORS: moderatorsHtml,
     LOGGED_IN_USER_LIST: user?.username ?? "",
     L_MARK_TOPICS_READ: "Mark all topics read",
     U_MARK_READ: `/viewforum/${forumId}?mark=topics`,

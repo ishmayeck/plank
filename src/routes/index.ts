@@ -171,6 +171,36 @@ index.get("/", async (c) => {
     }
   }
 
+  // Fetch moderators for all forums
+  const forumIds = (forums ?? []).map((f: any) => f.id);
+  let forumModMap: Record<number, { id: string; username: string }[]> = {};
+  if (forumIds.length > 0) {
+    const { data: modEntries } = await supabase
+      .from("auth_access")
+      .select("forum_id, groups(group_name, user_group(user_id, profiles(id, username)))")
+      .in("forum_id", forumIds)
+      .eq("auth_mod", true);
+
+    if (modEntries) {
+      const seen = new Set<string>();
+      for (const me of modEntries) {
+        const fid = me.forum_id;
+        if (!forumModMap[fid]) forumModMap[fid] = [];
+        const group = me.groups as any;
+        if (group?.user_group) {
+          for (const ug of group.user_group) {
+            const profile = ug.profiles as any;
+            const key = `${fid}:${profile?.id}`;
+            if (profile && !seen.has(key)) {
+              seen.add(key);
+              forumModMap[fid].push({ id: profile.id, username: profile.username });
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Build category/forum blocks
   if (categories && forums) {
     for (const cat of categories) {
@@ -197,7 +227,9 @@ index.get("/", async (c) => {
           FORUM_NAME: forum.forum_name,
           FORUM_DESC: forum.forum_desc ?? "",
           L_MODERATOR: "Moderator:",
-          MODERATORS: "Admin",
+          MODERATORS: (forumModMap[forum.id] ?? []).length > 0
+            ? forumModMap[forum.id].map((m: any) => `<a href="/profile/${m.id}">${m.username}</a>`).join(", ")
+            : "None",
           TOPICS: String(forum.forum_topics ?? 0),
           POSTS: String(forum.forum_posts ?? 0),
           LAST_POST: lastPostText,
