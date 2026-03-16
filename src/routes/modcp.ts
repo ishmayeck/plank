@@ -256,10 +256,10 @@ async function handleMoveConfirm(
 
   for (const topicId of topicIds) {
     if (leaveShadow) {
-      // Get original topic info for shadow
+      // Get original topic info for shadow (copy all display fields, matching phpBB2)
       const { data: original } = await adminDb
         .from("topics")
-        .select("topic_title, topic_poster")
+        .select("topic_title, topic_poster, topic_time, topic_vote, topic_views, topic_replies, topic_first_post_id, topic_last_post_id")
         .eq("id", topicId)
         .single();
 
@@ -269,7 +269,14 @@ async function handleMoveConfirm(
           forum_id: sourceForumId,
           topic_title: original.topic_title,
           topic_poster: original.topic_poster,
+          topic_time: original.topic_time,
           topic_status: 2, // moved
+          topic_type: 0, // normal
+          topic_vote: original.topic_vote,
+          topic_views: original.topic_views,
+          topic_replies: original.topic_replies,
+          topic_first_post_id: original.topic_first_post_id,
+          topic_last_post_id: original.topic_last_post_id,
           topic_moved_id: topicId,
         });
       }

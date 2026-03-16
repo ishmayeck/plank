@@ -27,6 +27,11 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     return c.text("Topic not found", 404);
   }
 
+  // Shadow/moved topic — redirect to the real topic
+  if (topic.topic_status === 2 && topic.topic_moved_id) {
+    return c.redirect(`/viewtopic/${topic.topic_moved_id}`);
+  }
+
   // Increment view count and fetch jumpbox data in parallel
   const [, { data: jumpForums }, { data: jumpCats }] = await Promise.all([
     supabase

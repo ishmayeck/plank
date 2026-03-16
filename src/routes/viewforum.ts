@@ -205,44 +205,48 @@ viewforum.get("/viewforum/:id", async (c) => {
         : "";
       const lastPostAuthor = lastPost?.poster?.username ?? "";
 
-      // Determine folder icon
+      // Determine folder icon and topic type prefix
       let folderImg = "templates/Solaris/images/folder.gif";
       let folderAlt = "No new posts";
-
-      if (topic.topic_status === 1) {
-        // Locked
-        folderImg = "templates/Solaris/images/folder_lock.gif";
-        folderAlt = "Locked";
-      } else if (topic.topic_type === 2) {
-        // Announcement
-        folderImg = "templates/Solaris/images/folder_announce.gif";
-        folderAlt = "Announcement";
-      } else if (topic.topic_type === 1) {
-        // Sticky
-        folderImg = "templates/Solaris/images/folder_sticky.gif";
-        folderAlt = "Sticky";
-      } else if (topic.topic_replies >= 15) {
-        // Hot topic
-        folderImg = "templates/Solaris/images/folder_hot.gif";
-        folderAlt = "Hot topic";
-      }
-
-      // Topic type prefix (matches phpBB2 lang strings)
       let topicType = "";
-      if (topic.topic_type === 2)
-        topicType = '<b>Announcement:</b> ';
-      else if (topic.topic_type === 1)
-        topicType = '<b>Sticky:</b> ';
+      let topicLinkId = topic.id;
 
-      if (topic.topic_vote)
-        topicType += '<b>[ Poll ]</b> ';
+      if (topic.topic_status === 2) {
+        // Moved — shadow topic pointing to real topic
+        topicType = '<b>Moved:</b> ';
+        folderAlt = "Topic Moved";
+        topicLinkId = topic.topic_moved_id ?? topic.id;
+      } else {
+        if (topic.topic_status === 1) {
+          folderImg = "templates/Solaris/images/folder_lock.gif";
+          folderAlt = "Locked";
+        } else if (topic.topic_type === 2) {
+          folderImg = "templates/Solaris/images/folder_announce.gif";
+          folderAlt = "Announcement";
+        } else if (topic.topic_type === 1) {
+          folderImg = "templates/Solaris/images/folder_sticky.gif";
+          folderAlt = "Sticky";
+        } else if (topic.topic_replies >= 15) {
+          folderImg = "templates/Solaris/images/folder_hot.gif";
+          folderAlt = "Hot topic";
+        }
+
+        // Topic type prefix (matches phpBB2 lang strings)
+        if (topic.topic_type === 2)
+          topicType = '<b>Announcement:</b> ';
+        else if (topic.topic_type === 1)
+          topicType = '<b>Sticky:</b> ';
+
+        if (topic.topic_vote)
+          topicType += '<b>[ Poll ]</b> ';
+      }
 
       tpl.assignBlockVars("topicrow", {
         TOPIC_FOLDER_IMG: folderImg,
         L_TOPIC_FOLDER_ALT: folderAlt,
         NEWEST_POST_IMG: "",
         TOPIC_TYPE: topicType,
-        U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
+        U_VIEW_TOPIC: `/viewtopic/${topicLinkId}`,
         TOPIC_TITLE: topic.topic_title,
         GOTO_PAGE: topicGotoPage(
           `/viewtopic/${topic.id}`,
