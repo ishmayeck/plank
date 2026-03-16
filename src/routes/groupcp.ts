@@ -58,7 +58,7 @@ groupcp.get("/groupcp", async (c) => {
   );
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "Usergroups",
   });
 
@@ -192,7 +192,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   }
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: group.group_name,
   });
 
@@ -325,7 +325,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   if ((isGroupMod || isAdmin) && pendingMembers.length > 0) {
     // Render pending members inline using the pending template
     const pendingTpl = createPageTemplate({
-      user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+      user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
       pageTitle: "",
     });
     pendingTpl.loadFile("pending", "groupcp_pending_info.tpl");
@@ -416,7 +416,7 @@ groupcp.post("/groupcp", async (c) => {
       : 'You have joined this group.';
     return c.html(
       renderMessagePage({
-        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
         title: "Information",
         messageHtml:
           `${joinMsg}<br /><br />` +
@@ -436,7 +436,7 @@ groupcp.post("/groupcp", async (c) => {
       .eq("user_id", user.id);
     return c.html(
       renderMessagePage({
-        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
         title: "Information",
         messageHtml:
           'You have been removed from this group.<br /><br />' +
@@ -463,7 +463,7 @@ groupcp.post("/groupcp", async (c) => {
     }
     return c.html(
       renderMessagePage({
-        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
         title: "Information",
         messageHtml:
           'Successfully updated group type.<br /><br />' +

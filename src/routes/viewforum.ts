@@ -26,7 +26,7 @@ viewforum.get("/viewforum/:id", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: forum.forum_name,
   });

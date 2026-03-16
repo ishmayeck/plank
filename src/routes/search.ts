@@ -38,7 +38,7 @@ search.get("/search", async (c) => {
   // Show search form
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Search",
   });
@@ -251,7 +251,7 @@ async function handleTopicResults(
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Search Results",
   });
@@ -368,7 +368,7 @@ async function handlePostResults(
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Search Results",
   });
@@ -470,7 +470,7 @@ async function handleNewPosts(c: any) {
     .range(offset, offset + RESULTS_PER_PAGE - 1);
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "View new posts since last visit",
   });
 
@@ -548,7 +548,7 @@ async function handleUnanswered(c: any) {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "View unanswered posts",
   });

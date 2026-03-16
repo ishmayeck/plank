@@ -438,7 +438,7 @@ interface PostingFormOpts {
 
 function renderPostingForm(opts: PostingFormOpts): string {
   const tpl = createPageTemplate({
-    user: { id: opts.user.id, username: opts.user.username, unreadPms: opts.user.unreadPms },
+    user: { id: opts.user.id, username: opts.user.username, unreadPms: opts.user.unreadPms, userLevel: opts.user.userLevel },
     pageTitle: opts.postTitle,
   });
 

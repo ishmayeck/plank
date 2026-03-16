@@ -54,7 +54,7 @@ profile.get("/profile/:id", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Viewing profile",
   });
@@ -270,7 +270,7 @@ profile.post("/profile", async (c) => {
 
   return c.html(
     renderMessagePage({
-      ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+      ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
       title: "Information",
       messageHtml:
         'Your profile has been updated<br /><br />' +
@@ -312,7 +312,7 @@ profile.get("/memberlist", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Memberlist",
   });
@@ -438,7 +438,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
   const maxFilesize = avatarConfig?.maxFilesize ?? 6144;
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "Edit Profile",
   });
 

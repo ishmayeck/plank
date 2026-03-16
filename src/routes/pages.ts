@@ -89,7 +89,7 @@ pages.get("/faq", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "FAQ",
   });
@@ -172,7 +172,7 @@ pages.get("/viewonline", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Who is Online",
   });

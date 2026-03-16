@@ -45,7 +45,7 @@ modcp.get("/modcp", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: "Moderator Control Panel",
   });
@@ -203,7 +203,7 @@ async function renderMovePage(
     `<input type="hidden" name="mode" value="move" />`;
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "Move Topic",
   });
 
@@ -338,7 +338,7 @@ modcp.get("/modcp/split", async (c) => {
   forumSelect += "</select>";
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "Split Topic",
   });
 
@@ -631,7 +631,7 @@ modcp.get("/modcp/ip", async (c) => {
   }
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "IP Information",
   });
 

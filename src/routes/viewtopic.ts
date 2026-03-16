@@ -35,7 +35,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
 
   const tpl = createPageTemplate({
     user: user
-      ? { id: user.id, username: user.username, unreadPms: user.unreadPms }
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
       : null,
     pageTitle: topic.topic_title,
   });

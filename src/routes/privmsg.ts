@@ -75,7 +75,7 @@ privmsg.get("/privmsg", async (c) => {
   );
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: `Private Messages - ${capitalize(folder)}`,
   });
 
@@ -218,7 +218,7 @@ async function handleReadPM(c: any) {
   }
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: pm.privmsgs_subject,
   });
 
@@ -340,7 +340,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   const smilies = await loadSmilies(supabase);
 
   const tpl = createPageTemplate({
-    user: { id: user.id, username: user.username, unreadPms: user.unreadPms },
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: "Send Private Message",
   });
 
@@ -534,7 +534,7 @@ privmsg.post("/privmsg", async (c) => {
 
     return c.html(
       renderMessagePage({
-        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
         title: "Information",
         messageHtml:
           'Your message has been sent.<br /><br />' +

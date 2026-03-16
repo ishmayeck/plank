@@ -40,6 +40,7 @@ export interface RenderContext {
     id: string;
     username: string;
     unreadPms: number;
+    userLevel?: number;
   } | null;
   pageTitle?: string;
 }
@@ -101,7 +102,9 @@ export function createPageTemplate(ctx: RenderContext): Template {
 
     // Footer
     PHPBB_VERSION: "",
-    ADMIN_LINK: "",
+    ADMIN_LINK: ctx.user?.userLevel && ctx.user.userLevel >= 1
+      ? '<a href="/admin">Go to Administration Panel</a><br /><br />'
+      : "",
     TRANSLATION_INFO: "",
   });
 
