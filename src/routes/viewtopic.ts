@@ -213,7 +213,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
           : "";
       const editImg =
         isOwnPost || isMod
-          ? `<a href="/posting?mode=editpost&p=${post.id}"><img src="templates/Solaris/images/icon_edit.gif" alt="Edit" border="0" /></a>`
+          ? `<a href="/posting?mode=editpost&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_edit.gif" alt="Edit" border="0" /></a>`
           : "";
       const deleteImg =
         isOwnPost || isMod
@@ -244,7 +244,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         EDIT_IMG: editImg,
         DELETE_IMG: deleteImg,
         IP_IMG: isMod
-          ? `<a href="/modcp/ip?p=${post.id}"><img src="templates/Solaris/images/icon_ip.gif" alt="IP" border="0" /></a>`
+          ? `<a href="/modcp/ip?p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_ip.gif" alt="IP" border="0" /></a>`
           : "",
         PROFILE_IMG: `<a href="/profile/${poster?.id ?? ""}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`,
         PM_IMG: poster
