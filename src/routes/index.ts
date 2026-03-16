@@ -65,7 +65,7 @@ index.get("/", async (c) => {
     TOTAL_USERS_ONLINE: "In total there is <b>1</b> user online :: 0 Registered, 0 Hidden and 1 Guest",
     RECORD_USERS: String(totalUsers ?? 0),
     LOGGED_IN_USER_LIST: user?.username ?? "",
-    CURRENT_TIME: formatPhpBBDate(new Date()),
+    CURRENT_TIME: `The time now is ${formatPhpBBDate(new Date())}`,
 
     // Links
     U_VIEWONLINE: "/viewonline",
@@ -86,7 +86,9 @@ index.get("/", async (c) => {
     L_SEARCH_SELF: "View your posts",
     U_SEARCH_UNANSWERED: "/search?mode=unanswered",
     L_SEARCH_UNANSWERED: "View unanswered posts",
-    LAST_VISIT_DATE: "",
+    LAST_VISIT_DATE: user?.lastVisit
+      ? `You last visited on ${formatPhpBBDate(user.lastVisit)}`
+      : "",
   });
 
   if (!user) {
