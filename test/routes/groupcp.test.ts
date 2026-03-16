@@ -224,7 +224,9 @@ describe("User Groups", () => {
         body: formData,
         headers: user1Headers(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("You have joined this group");
 
       const { data: membership } = await adminDb
         .from("user_group")
@@ -257,7 +259,9 @@ describe("User Groups", () => {
         body: formData,
         headers: user2Headers(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("pending approval");
 
       const { data: membership } = await adminDb
         .from("user_group")
@@ -369,7 +373,9 @@ describe("User Groups", () => {
         body: formData,
         headers: user1Headers(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("You have been removed from this group");
 
       const { data: membership } = await adminDb
         .from("user_group")
@@ -393,7 +399,9 @@ describe("User Groups", () => {
         body: formData,
         headers: modHeaders(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Successfully updated group type");
 
       const { data: group } = await adminDb
         .from("groups")

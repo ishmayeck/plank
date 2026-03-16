@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { generatePagination } from "../lib/pagination.js";
@@ -532,7 +532,17 @@ privmsg.post("/privmsg", async (c) => {
       privmsgs_text_html: messageHtml,
     });
 
-    return c.redirect("/privmsg?folder=sentbox");
+    return c.html(
+      renderMessagePage({
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        title: "Information",
+        messageHtml:
+          'Your message has been sent.<br /><br />' +
+          'Click <a href="/privmsg?folder=sentbox">Here</a> to return to your Sentbox<br /><br />' +
+          'Click <a href="/">Here</a> to return to the Index',
+        redirectUrl: "/privmsg?folder=sentbox",
+      })
+    );
   }
 
   // Delete PM(s)

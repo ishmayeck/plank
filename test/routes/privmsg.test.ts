@@ -154,8 +154,10 @@ describe("Private Messaging", () => {
         headers: senderHeaders(),
       });
 
-      expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/privmsg?folder=sentbox");
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your message has been sent");
+      expect(html).toContain("return to your Sentbox");
 
       // Verify PM was created
       const { data: pms } = await adminDb

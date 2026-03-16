@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage } from "../lib/render.js";
 
 const groupcp = new Hono();
 
@@ -411,7 +411,20 @@ groupcp.post("/groupcp", async (c) => {
         user_pending: true,
       });
     }
-    return c.redirect(`/groupcp?g=${groupId}`);
+    const joinMsg = group.group_type === 1
+      ? 'Your request to join this group has been submitted and is pending approval.'
+      : 'You have joined this group.';
+    return c.html(
+      renderMessagePage({
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        title: "Information",
+        messageHtml:
+          `${joinMsg}<br /><br />` +
+          `Click <a href="/groupcp?g=${groupId}">Here</a> to return to group information<br /><br />` +
+          'Click <a href="/">Here</a> to return to the Index',
+        redirectUrl: `/groupcp?g=${groupId}`,
+      })
+    );
   }
 
   // Unsubscribe
@@ -421,7 +434,17 @@ groupcp.post("/groupcp", async (c) => {
       .delete()
       .eq("group_id", groupId)
       .eq("user_id", user.id);
-    return c.redirect("/groupcp");
+    return c.html(
+      renderMessagePage({
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        title: "Information",
+        messageHtml:
+          'You have been removed from this group.<br /><br />' +
+          'Click <a href="/groupcp">Here</a> to return to Usergroups<br /><br />' +
+          'Click <a href="/">Here</a> to return to the Index',
+        redirectUrl: "/groupcp",
+      })
+    );
   }
 
   // Group mod/admin actions
@@ -438,7 +461,17 @@ groupcp.post("/groupcp", async (c) => {
         .update({ group_type: newType })
         .eq("id", groupId);
     }
-    return c.redirect(`/groupcp?g=${groupId}`);
+    return c.html(
+      renderMessagePage({
+        ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+        title: "Information",
+        messageHtml:
+          'Successfully updated group type.<br /><br />' +
+          `Click <a href="/groupcp?g=${groupId}">Here</a> to return to group information<br /><br />` +
+          'Click <a href="/">Here</a> to return to the Index',
+        redirectUrl: `/groupcp?g=${groupId}`,
+      })
+    );
   }
 
   // Add member

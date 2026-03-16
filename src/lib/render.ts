@@ -141,3 +141,32 @@ export function renderErrorBox(message: string): string {
   tpl.assignVars({ ERROR_MESSAGE: message });
   return tpl.render("error");
 }
+
+/**
+ * Render an interstitial message page using message_body.tpl.
+ * Matches phpBB2's message_die(GENERAL_MESSAGE, ...) pattern.
+ *
+ * messageHtml can include links (e.g. "Click <a href="/">here</a> to return").
+ * If redirectUrl is provided, a 5-second meta refresh is added.
+ */
+export function renderMessagePage(opts: {
+  ctx: RenderContext;
+  title: string;
+  messageHtml: string;
+  redirectUrl?: string;
+}): string {
+  const meta = opts.redirectUrl
+    ? `<base href="/"><meta http-equiv="refresh" content="5;url=${opts.redirectUrl}">`
+    : '<base href="/">';
+
+  const tpl = createPageTemplate(opts.ctx);
+  tpl.assignVars({ META: meta });
+  tpl.loadFile("body", "message_body.tpl");
+  tpl.assignVars({
+    MESSAGE_TITLE: opts.title,
+    MESSAGE_TEXT: opts.messageHtml,
+    U_INDEX: "/",
+    L_INDEX: "Index",
+  });
+  return renderPage(tpl);
+}

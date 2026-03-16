@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
@@ -240,7 +240,16 @@ profile.post("/profile", async (c) => {
     }
   }
 
-  return c.redirect(`/profile/${user.id}`);
+  return c.html(
+    renderMessagePage({
+      ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms } },
+      title: "Information",
+      messageHtml:
+        'Your profile has been updated<br /><br />' +
+        'Click <a href="/">Here</a> to return to the Index',
+      redirectUrl: "/",
+    })
+  );
 });
 
 // ─── Member List ──────────────────────────────────────────────

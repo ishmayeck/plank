@@ -132,8 +132,10 @@ describe("User Profiles", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe(`/profile/${testUserId}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your profile has been updated");
+      expect(html).toContain("return to the Index");
 
       // Verify updates persisted
       const { data: updated } = await adminDb
