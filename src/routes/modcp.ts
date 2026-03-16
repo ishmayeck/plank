@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 
 const modcp = new Hono();
@@ -23,7 +23,51 @@ modcp.get("/modcp", async (c) => {
   const user = c.get("user");
   if (!isMod(user)) return c.text("Forbidden", 403);
 
+  const mode = c.req.query("mode") ?? "";
   const forumId = parseInt(c.req.query("f") ?? "0", 10);
+  const topicId = parseInt(c.req.query("t") ?? "0", 10);
+
+  // ── Single-topic actions from viewtopic buttons ──
+  if (mode && topicId && forumId) {
+    const userCtx = { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } };
+
+    if (mode === "delete") {
+      // Show confirmation page
+      return c.html(renderConfirmPage(c, user, {
+        title: "Confirm",
+        message: "Are you sure you want to remove the selected topic/s?",
+        action: "/modcp",
+        hiddenFields: { mode: "delete", f: String(forumId), [`topic_id_list[]`]: String(topicId) },
+      }));
+    }
+
+    if (mode === "move") {
+      return renderMovePage(c, user, [topicId], forumId);
+    }
+
+    if (mode === "lock") {
+      const adminDb = getAdminDb();
+      await adminDb.from("topics").update({ topic_status: 1 }).eq("id", topicId).eq("forum_id", forumId);
+      const msg = `The selected topics have been locked.<br /><br />`
+        + `Click <a href="/viewtopic/${topicId}">Here</a> to return to the topic`
+        + `<br /><br />Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`;
+      return c.html(renderMessagePage({ ctx: userCtx, title: "Moderate", messageHtml: msg, redirectUrl: `/viewtopic/${topicId}` }));
+    }
+
+    if (mode === "unlock") {
+      const adminDb = getAdminDb();
+      await adminDb.from("topics").update({ topic_status: 0 }).eq("id", topicId).eq("forum_id", forumId);
+      const msg = `The selected topics have been unlocked.<br /><br />`
+        + `Click <a href="/viewtopic/${topicId}">Here</a> to return to the topic`
+        + `<br /><br />Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`;
+      return c.html(renderMessagePage({ ctx: userCtx, title: "Moderate", messageHtml: msg, redirectUrl: `/viewtopic/${topicId}` }));
+    }
+
+    if (mode === "split") {
+      return c.redirect(`/modcp/split?t=${topicId}`);
+    }
+  }
+
   if (!forumId) return c.text("Forum not specified", 400);
 
   const supabase = c.get("supabase");
@@ -124,9 +168,29 @@ modcp.post("/modcp", async (c) => {
     }
   }
 
-  // Handle move confirm/cancel from the move page
-  if (body.confirm && body.mode === "move") {
-    return handleMoveConfirm(c, user!, body, forumId);
+  // Handle mode-based confirm/cancel (from viewtopic buttons)
+  if (body.mode === "move") {
+    if (body.cancel) return c.redirect(`/modcp?f=${forumId}`);
+    if (body.confirm) return handleMoveConfirm(c, user!, body, forumId);
+  }
+
+  if (body.mode === "delete") {
+    if (body.cancel) {
+      // Return to topic if single topic, otherwise to modcp
+      const singleTopicId = topicIds.length === 1 ? topicIds[0] : 0;
+      return c.redirect(singleTopicId ? `/viewtopic/${singleTopicId}` : `/modcp?f=${forumId}`);
+    }
+    if (body.confirm && topicIds.length > 0) {
+      const adminDb = getAdminDb();
+      for (const tid of topicIds) {
+        await adminDb.from("topics").delete().eq("id", tid);
+      }
+      await recalcForumStats(adminDb, forumId);
+      const userCtx = { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } };
+      const msg = `The selected topics have been successfully removed from the database.<br /><br />`
+        + `Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`;
+      return c.html(renderMessagePage({ ctx: userCtx, title: "Moderate", messageHtml: msg, redirectUrl: `/viewforum/${forumId}` }));
+    }
   }
 
   // Handle split actions
@@ -299,7 +363,17 @@ async function handleMoveConfirm(
   await recalcForumStats(adminDb, sourceForumId);
   await recalcForumStats(adminDb, newForumId);
 
-  return c.redirect(`/modcp?f=${newForumId}`);
+  const userCtx = { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } };
+  const singleTopicId = topicIds.length === 1 ? topicIds[0] : 0;
+  let msg = (newForumId !== sourceForumId)
+    ? `The selected topics have been moved.<br /><br />`
+    : `No topics were moved.<br /><br />`;
+  if (singleTopicId) {
+    msg += `Click <a href="/viewtopic/${singleTopicId}">Here</a> to return to the topic<br /><br />`;
+  }
+  msg += `Click <a href="/viewforum/${sourceForumId}">Here</a> to return to the forum`;
+  const redirectUrl = singleTopicId ? `/viewtopic/${singleTopicId}` : `/modcp?f=${sourceForumId}`;
+  return c.html(renderMessagePage({ ctx: userCtx, title: "Moderate", messageHtml: msg, redirectUrl }));
 }
 
 // ─── Split Topic ──────────────────────────────────────────────
@@ -717,6 +791,37 @@ async function recalcForumStats(adminDb: any, forumId: number) {
       forum_last_post_id: lastPost?.id ?? 0,
     })
     .eq("id", forumId);
+}
+
+function renderConfirmPage(
+  c: any,
+  user: any,
+  opts: { title: string; message: string; action: string; hiddenFields: Record<string, string> }
+): string {
+  const tpl = createPageTemplate({
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
+    pageTitle: opts.title,
+  });
+
+  tpl.loadFile("body", "confirm_body.tpl");
+
+  let hiddenHtml = "";
+  for (const [key, val] of Object.entries(opts.hiddenFields)) {
+    hiddenHtml += `<input type="hidden" name="${key}" value="${val}" />`;
+  }
+
+  tpl.assignVars({
+    MESSAGE_TITLE: opts.title,
+    MESSAGE_TEXT: opts.message,
+    L_YES: "Yes",
+    L_NO: "No",
+    S_CONFIRM_ACTION: opts.action,
+    S_HIDDEN_FIELDS: hiddenHtml,
+    U_INDEX: "/",
+    L_INDEX: "Index",
+  });
+
+  return renderPage(tpl);
 }
 
 export default modcp;

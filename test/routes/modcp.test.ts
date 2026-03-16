@@ -358,7 +358,9 @@ describe("Moderation Control Panel", () => {
         body: formData,
         headers: modHeaders(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("The selected topics have been moved.");
 
       const { data: topic } = await adminDb
         .from("topics")
