@@ -1,6 +1,11 @@
 import { Hono } from "hono";
+import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
+
+function getAdminDb() {
+  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
 
 const TOPICS_PER_PAGE = 25;
 const POSTS_PER_PAGE = 15;
@@ -98,6 +103,43 @@ viewforum.get("/viewforum/:id", async (c) => {
     ? moderatorNames.map((m) => `<a href="/profile/${m.id}">${m.username}</a>`).join(", ")
     : "None";
 
+  // Users browsing this forum (active sessions on this page in last 5 minutes)
+  const adminDb = getAdminDb();
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: browsingSessions } = await adminDb
+    .from("sessions")
+    .select("user_id, session_logged_in, profiles(id, username, user_level)")
+    .eq("session_page", `/viewforum/${forumId}`)
+    .gte("session_time", fiveMinAgo);
+
+  const browsingUsers: string[] = [];
+  let browsingGuests = 0;
+  const seenBrowsing = new Set<string>();
+  for (const s of browsingSessions ?? []) {
+    if (s.session_logged_in && s.profiles) {
+      const profile = s.profiles as any;
+      if (!seenBrowsing.has(profile.id)) {
+        seenBrowsing.add(profile.id);
+        // Role colors: admin = red, mod = blue
+        let cssClass = "";
+        if (profile.user_level >= 1) cssClass = ' style="color:#AA0000; font-weight:bold"';
+        browsingUsers.push(`<a href="/profile/${profile.id}"${cssClass}>${profile.username}</a>`);
+      }
+    } else {
+      browsingGuests++;
+    }
+  }
+
+  let browsingStr = "Users browsing this forum: ";
+  if (browsingUsers.length > 0) {
+    browsingStr += browsingUsers.join(", ");
+    if (browsingGuests > 0) browsingStr += `, ${browsingGuests} Guest${browsingGuests !== 1 ? "s" : ""}`;
+  } else {
+    browsingStr += browsingGuests > 0
+      ? `${browsingGuests} Guest${browsingGuests !== 1 ? "s" : ""}`
+      : "None";
+  }
+
   const pagination = generatePagination(
     `/viewforum/${forumId}`,
     totalTopics ?? 0,
@@ -121,7 +163,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     POST_IMG: "templates/Solaris/images/lang_english/new_topic.gif",
     L_MODERATOR: "Moderator",
     MODERATORS: moderatorsHtml,
-    LOGGED_IN_USER_LIST: user?.username ?? "",
+    LOGGED_IN_USER_LIST: browsingStr,
     L_MARK_TOPICS_READ: "Mark all topics read",
     U_MARK_READ: `/viewforum/${forumId}?mark=topics`,
     L_DISPLAY_TOPICS: "Display topics from previous",

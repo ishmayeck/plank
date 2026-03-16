@@ -79,6 +79,40 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 
   c.set("user", user);
   c.set("supabase", supabase);
+
+  // Track session (fire-and-forget, don't block the request).
+  // Only track page-level GETs (not static assets, API calls, etc.)
+  const sessionPage = c.req.path;
+  if (c.req.method === "GET" && !sessionPage.startsWith("/static/") && !sessionPage.startsWith("/templates/")) {
+    const clientIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+      ?? c.req.header("x-real-ip")
+      ?? null;
+    const adminDb = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    // Use access token prefix as session ID for logged-in users, or a cookie-based guest ID
+    const sessionId = accessToken?.slice(0, 32) ?? getCookie(c, "plank-sid") ?? crypto.randomUUID();
+    if (!accessToken && !getCookie(c, "plank-sid")) {
+      setCookie(c, "plank-sid", sessionId, {
+        httpOnly: true,
+        sameSite: "Lax",
+        path: "/",
+        maxAge: 60 * 60, // 1 hour
+      });
+    }
+    const now = new Date().toISOString();
+    adminDb.from("sessions").upsert({
+      session_id: sessionId,
+      user_id: user?.id ?? null,
+      session_logged_in: !!user,
+      session_time: now,
+      session_start: now,
+      session_ip: clientIp,
+      session_page: sessionPage,
+    }, { onConflict: "session_id" }).then(() => {});
+  }
+
   await next();
 });
 
