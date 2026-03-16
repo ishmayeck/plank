@@ -105,34 +105,44 @@ pages.get("/faq", async (c) => {
     JUMPBOX: "",
   });
 
-  // Top-of-page link index
+  // The template uses <a name="X"> for anchors, which is deprecated in HTML5.
+  // Modern browsers use id="" for fragment navigation. Add id alongside name
+  // without modifying the original .tpl file.
+  tpl.registerSubstitution(
+    /<a name="([^"]+)"><\/a>/g,
+    '<a name="$1" id="$1"></a>'
+  );
+
+  // Top-of-page link index (uses numeric IDs like phpBB2)
+  let faqCounter = 0;
   for (const block of faqData) {
     tpl.assignBlockVars("faq_block_link", {
       BLOCK_TITLE: block.title,
     });
-    for (const q of block.questions) {
-      const anchor = q.q.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 40);
+    for (const _q of block.questions) {
       tpl.assignBlockVars("faq_block_link.faq_row_link", {
-        U_FAQ_LINK: `#${anchor}`,
-        FAQ_LINK: q.q,
+        U_FAQ_LINK: `#faq_${faqCounter}`,
+        FAQ_LINK: _q.q,
       });
+      faqCounter++;
     }
   }
 
   // Full Q&A blocks
+  faqCounter = 0;
   let rowIndex = 0;
   for (const block of faqData) {
     tpl.assignBlockVars("faq_block", {
       BLOCK_TITLE: block.title,
     });
     for (const q of block.questions) {
-      const anchor = q.q.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 40);
       tpl.assignBlockVars("faq_block.faq_row", {
         ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
-        U_FAQ_ID: anchor,
+        U_FAQ_ID: `faq_${faqCounter}`,
         FAQ_QUESTION: q.q,
         FAQ_ANSWER: q.a,
       });
+      faqCounter++;
       rowIndex++;
     }
   }
