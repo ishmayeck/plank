@@ -492,7 +492,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     JUMPBOX: "",
     TOPIC_REVIEW_BOX: opts.topicReviewHtml ?? "",
     POLLBOX: "",
-    S_SMILIES_COLSPAN: "5",
+    S_SMILIES_COLSPAN: "4",
 
     // BBCode toolbar labels
     L_BBCODE_B_HELP: "Bold text: [b]text[/b]  (alt+b)",
@@ -573,9 +573,9 @@ function renderPostingForm(opts: PostingFormOpts): string {
     tpl.assignBlockVars("switch_delete_checkbox", {});
   }
 
-  // Smilies grid (show first 20 in a 5-column grid)
-  const smiliesPerRow = 5;
-  const displaySmilies = opts.smilies.slice(0, 20);
+  // Smilies grid (show first 19 in a 4-column grid, matching phpBB2)
+  const smiliesPerRow = 4;
+  const displaySmilies = opts.smilies.slice(0, 19);
   for (let row = 0; row < Math.ceil(displaySmilies.length / smiliesPerRow); row++) {
     tpl.assignBlockVars("smilies_row", {});
     for (let col = 0; col < smiliesPerRow; col++) {

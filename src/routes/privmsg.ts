@@ -370,7 +370,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     JUMPBOX: "",
     TOPIC_REVIEW_BOX: "",
     POLLBOX: "",
-    S_SMILIES_COLSPAN: "5",
+    S_SMILIES_COLSPAN: "4",
 
     // Username field for recipient
     L_USERNAME: "Username",
@@ -440,9 +440,9 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   tpl.assignBlockVars("switch_smilies_checkbox", {});
   tpl.assignBlockVars("switch_signature_checkbox", {});
 
-  // Smilies grid
-  const smiliesPerRow = 5;
-  const displaySmilies = smilies.slice(0, 20);
+  // Smilies grid (4 columns, first 19, matching phpBB2)
+  const smiliesPerRow = 4;
+  const displaySmilies = smilies.slice(0, 19);
   for (let row = 0; row < Math.ceil(displaySmilies.length / smiliesPerRow); row++) {
     tpl.assignBlockVars("smilies_row", {});
     for (let col = 0; col < smiliesPerRow; col++) {

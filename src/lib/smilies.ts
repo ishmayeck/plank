@@ -18,9 +18,20 @@ export async function loadSmilies(
 
   const { data } = await supabase
     .from("smilies")
-    .select("code, smile_url, emoticon");
+    .select("code, smile_url, emoticon")
+    .order("id");
 
-  cachedSmilies = data ?? [];
+  // Deduplicate by smile_url (keep first occurrence, matching phpBB2)
+  const seen = new Set<string>();
+  const unique: Smiley[] = [];
+  for (const s of data ?? []) {
+    if (!seen.has(s.smile_url)) {
+      seen.add(s.smile_url);
+      unique.push(s);
+    }
+  }
+
+  cachedSmilies = unique;
   return cachedSmilies;
 }
 
