@@ -468,7 +468,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     L_SIGNATURE_EXPLAIN: "This is a block of text that can be added to posts you make",
     SIGNATURE: profileData.user_sig ?? "",
     HTML_STATUS: "HTML is OFF",
-    BBCODE_STATUS: "BBCode is ON",
+    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
     SMILIES_STATUS: "Smilies are ON",
 
     // Preferences

@@ -315,7 +315,7 @@ function renderRegisterPage(
     L_AVATAR_GALLERY: "Avatar gallery",
     L_SHOW_GALLERY: "Show gallery",
     HTML_STATUS: "",
-    BBCODE_STATUS: "BBCode is ON",
+    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
     SMILIES_STATUS: "Smilies are ON",
 
     // Prefill values

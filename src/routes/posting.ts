@@ -517,7 +517,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
 
     // Checkbox options
     HTML_STATUS: "HTML is OFF",
-    BBCODE_STATUS: "BBCode is ON",
+    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
     SMILIES_STATUS: "Smilies are ON",
     L_DISABLE_HTML: "Disable HTML in this post",
     L_DISABLE_BBCODE: "Disable BBCode in this post",
