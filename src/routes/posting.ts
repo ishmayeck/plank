@@ -25,9 +25,12 @@ posting.get("/posting", async (c) => {
   let message = "";
   let forumName = "";
   let postTitle = "Post a new topic";
+  let currentTopicType = 0;
+  let isFirstPost = false;
 
   if (mode === "newtopic") {
     forumId = parseInt(c.req.query("f") ?? "0", 10);
+    isFirstPost = true;
     const { data: forum } = await supabase
       .from("forums")
       .select("forum_name")
@@ -64,7 +67,7 @@ posting.get("/posting", async (c) => {
     postId = parseInt(c.req.query("p") ?? "0", 10);
     const { data: post } = await supabase
       .from("posts")
-      .select("*, posts_text(*), topics!posts_topic_id_fkey(topic_title, forum_id, forums(forum_name))")
+      .select("*, posts_text(*), topics!posts_topic_id_fkey(id, topic_title, topic_type, topic_first_post_id, forum_id, forums(forum_name))")
       .eq("id", postId)
       .single();
     if (!post) return c.text("Post not found", 404);
@@ -78,11 +81,16 @@ posting.get("/posting", async (c) => {
     subject = post.posts_text?.post_subject ?? "";
     message = post.posts_text?.post_text ?? "";
     postTitle = "Edit post";
+    currentTopicType = post.topics?.topic_type ?? 0;
+    isFirstPost = post.topics?.topic_first_post_id === post.id;
   }
 
   const smilies = await loadSmilies(supabase);
   const topicReviewHtml = topicId && (mode === "reply" || mode === "quote" || mode === "editpost")
     ? await renderTopicReview(topicId, smilies)
+    : "";
+  const topicTypeToggle = (isFirstPost && user.userLevel >= 1)
+    ? buildTopicTypeToggle(currentTopicType)
     : "";
   const html = renderPostingForm({
     user,
@@ -96,6 +104,7 @@ posting.get("/posting", async (c) => {
     postTitle,
     smilies,
     topicReviewHtml,
+    topicTypeToggle,
   });
 
   return c.html(html);
@@ -116,6 +125,7 @@ posting.post("/posting", async (c) => {
   const enableSig = body.attach_sig === "on";
   const enableSmilies = body.disable_smilies !== "on";
   const enableBBCode = body.disable_bbcode !== "on";
+  const topicType = user.userLevel >= 1 ? parseInt(body.topictype as string, 10) || 0 : 0;
 
   // Preview mode
   if (body.preview) {
@@ -189,7 +199,7 @@ posting.post("/posting", async (c) => {
         forum_id: forumId,
         topic_title: subject,
         topic_poster: user.id,
-        topic_type: parseInt(body.topic_type as string, 10) || 0,
+        topic_type: topicType,
       })
       .select()
       .single();
@@ -367,6 +377,18 @@ posting.post("/posting", async (c) => {
       post_text_html: messageHtml,
     }).eq("post_id", postId);
 
+    // Update topic type if editing first post and user is admin
+    if (topicType !== undefined && user.userLevel >= 1) {
+      const { data: editedPost } = await adminDb
+        .from("posts")
+        .select("topic_id, topics!posts_topic_id_fkey(topic_first_post_id)")
+        .eq("id", postId)
+        .single();
+      if (editedPost?.topics?.topic_first_post_id === postId) {
+        await adminDb.from("topics").update({ topic_type: topicType }).eq("id", editedPost.topic_id);
+      }
+    }
+
     // Find the topic for redirect
     const { data: post } = await adminDb
       .from("posts")
@@ -446,6 +468,7 @@ interface PostingFormOpts {
   preview?: string;
   error?: string;
   topicReviewHtml?: string;
+  topicTypeToggle?: string;
 }
 
 function renderPostingForm(opts: PostingFormOpts): string {
@@ -551,7 +574,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_SMILIES_CHECKED: "",
     S_SIGNATURE_CHECKED: 'checked="checked"',
     S_NOTIFY_CHECKED: "",
-    S_TYPE_TOGGLE: "",
+    S_TYPE_TOGGLE: opts.topicTypeToggle ?? "",
 
     L_USERNAME: "Username",
     USERNAME: opts.user.username,
@@ -571,6 +594,10 @@ function renderPostingForm(opts: PostingFormOpts): string {
 
   if (opts.mode === "editpost") {
     tpl.assignBlockVars("switch_delete_checkbox", {});
+  }
+
+  if (opts.topicTypeToggle) {
+    tpl.assignBlockVars("switch_type_toggle", {});
   }
 
   // Smilies grid (show first 19 in a 4-column grid, matching phpBB2)
@@ -596,6 +623,17 @@ function renderPostingForm(opts: PostingFormOpts): string {
   }
 
   return renderPage(tpl);
+}
+
+function buildTopicTypeToggle(currentType: number = 0): string {
+  const normalChecked = currentType === 0 ? ' checked="checked"' : "";
+  const stickyChecked = currentType === 1 ? ' checked="checked"' : "";
+  const announceChecked = currentType === 2 ? ' checked="checked"' : "";
+
+  return `Post topic as: ` +
+    `<input type="radio" name="topictype" value="0"${normalChecked} /> Normal&nbsp;&nbsp;` +
+    `<input type="radio" name="topictype" value="1"${stickyChecked} /> Sticky&nbsp;&nbsp;` +
+    `<input type="radio" name="topictype" value="2"${announceChecked} /> Announcement`;
 }
 
 async function renderTopicReview(topicId: number, smilies: Smiley[]): Promise<string> {
