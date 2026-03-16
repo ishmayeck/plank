@@ -354,6 +354,7 @@ posting.post("/posting", async (c) => {
             option_order: i,
           });
         }
+        await adminDb.from("topics").update({ topic_vote: true }).eq("id", topic.id);
       }
     }
 

@@ -83,8 +83,9 @@ modcp.get("/modcp", async (c) => {
           : "templates/Solaris/images/folder.gif";
 
       let topicType = "";
-      if (topic.topic_type === 1) topicType = '<b class="gensmall">Sticky: </b>';
-      if (topic.topic_type === 2) topicType = '<b class="gensmall">Announcement: </b>';
+      if (topic.topic_type === 1) topicType = '<b>Sticky:</b> ';
+      if (topic.topic_type === 2) topicType = '<b>Announcement:</b> ';
+      if (topic.topic_vote) topicType += '<b>[ Poll ]</b> ';
 
       tpl.assignBlockVars("topicrow", {
         TOPIC_ID: String(topic.id),

@@ -227,12 +227,15 @@ viewforum.get("/viewforum/:id", async (c) => {
         folderAlt = "Hot topic";
       }
 
-      // Topic type prefix
+      // Topic type prefix (matches phpBB2 lang strings)
       let topicType = "";
       if (topic.topic_type === 2)
-        topicType = '<span class="topictitle">[Announcement]</span> ';
+        topicType = '<b>Announcement:</b> ';
       else if (topic.topic_type === 1)
-        topicType = '<span class="topictitle">[Sticky]</span> ';
+        topicType = '<b>Sticky:</b> ';
+
+      if (topic.topic_vote)
+        topicType += '<b>[ Poll ]</b> ';
 
       tpl.assignBlockVars("topicrow", {
         TOPIC_FOLDER_IMG: folderImg,

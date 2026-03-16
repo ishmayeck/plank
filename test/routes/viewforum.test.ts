@@ -121,7 +121,7 @@ describe("View Forum", () => {
 
     const res = await app.request(`/viewforum/${forum!.id}`);
     const html = await res.text();
-    expect(html).toContain("[Sticky]");
+    expect(html).toContain("<b>Sticky:</b>");
   });
 
   it("returns 404 for nonexistent forum", async () => {
