@@ -103,7 +103,7 @@ describe("Private Messaging", () => {
     it("redirects to login when not authenticated", async () => {
       const res = await app.request("/privmsg");
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/login");
+      expect(res.headers.get("location")).toMatch(/^\/login/);
     });
   });
 

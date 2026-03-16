@@ -4,6 +4,7 @@ import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, render
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { generatePagination } from "../lib/pagination.js";
+import { loginRedirect } from "./auth.js";
 
 const PMS_PER_PAGE = 25;
 
@@ -21,7 +22,7 @@ const privmsg = new Hono();
 
 privmsg.get("/privmsg", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
   const supabase = c.get("supabase");
 
   const mode = c.req.query("mode");
@@ -465,7 +466,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
 
 privmsg.post("/privmsg", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
 
   const body = await c.req.parseBody();
   const mode = body.mode as string;

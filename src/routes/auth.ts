@@ -6,11 +6,20 @@ import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
 
 const auth = new Hono();
 
+/** Build a /login URL that redirects back to the given request's current page after login. */
+export function loginRedirect(c: { req: { url: string } }): string {
+  const url = new URL(c.req.url);
+  const path = url.pathname + url.search;
+  return `/login?redirect=${encodeURIComponent(path)}`;
+}
+
 // ─── Login Page ────────────────────────────────────────────────
 
 auth.get("/login", (c) => {
   const user = c.get("user");
   if (user) return c.redirect("/");
+
+  const redirect = c.req.query("redirect") ?? "";
 
   const tpl = createPageTemplate({ pageTitle: "Log in" });
   tpl.loadFile("body", "login_body.tpl");
@@ -27,7 +36,9 @@ auth.get("/login", (c) => {
     L_SEND_PASSWORD: "I forgot my password",
     U_SEND_PASSWORD: "/forgot-password",
     USERNAME: "",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: redirect
+      ? `<input type="hidden" name="redirect" value="${redirect}" />`
+      : "",
   });
   tpl.assignBlockVars("switch_allow_autologin", {});
 
@@ -38,9 +49,15 @@ auth.post("/login", async (c) => {
   const body = await c.req.parseBody();
   const username = body.username as string;
   const password = body.password as string;
+  const redirect = (body.redirect as string) ?? "";
+
+  // Validate redirect is a local path to prevent open redirects
+  const safeRedirect = redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+    ? redirect
+    : "/";
 
   if (!username || !password) {
-    return c.redirect("/login");
+    return c.redirect(redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login");
   }
 
   // Look up the user's email by username
@@ -71,7 +88,9 @@ auth.post("/login", async (c) => {
       L_SEND_PASSWORD: "I forgot my password",
       U_SEND_PASSWORD: "/forgot-password",
       USERNAME: username,
-      S_HIDDEN_FIELDS: "",
+      S_HIDDEN_FIELDS: redirect
+        ? `<input type="hidden" name="redirect" value="${redirect}" />`
+        : "",
     });
     tpl.assignBlockVars("switch_allow_autologin", {});
     return c.html(renderPage(tpl));
@@ -108,7 +127,9 @@ auth.post("/login", async (c) => {
       L_SEND_PASSWORD: "I forgot my password",
       U_SEND_PASSWORD: "/forgot-password",
       USERNAME: username,
-      S_HIDDEN_FIELDS: "",
+      S_HIDDEN_FIELDS: redirect
+        ? `<input type="hidden" name="redirect" value="${redirect}" />`
+        : "",
     });
     tpl.assignBlockVars("switch_allow_autologin", {});
     return c.html(renderPage(tpl));
@@ -128,7 +149,7 @@ auth.post("/login", async (c) => {
     maxAge: 60 * 60 * 24 * 30,
   });
 
-  return c.redirect("/");
+  return c.redirect(safeRedirect);
 });
 
 // ─── Register Page ─────────────────────────────────────────────

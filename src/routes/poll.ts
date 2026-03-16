@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
+import { loginRedirect } from "./auth.js";
 const poll = new Hono();
 
 // ─── Vote Submission ──────────────────────────────────────────
 
 poll.post("/poll", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
 
   const body = await c.req.parseBody();
   const topicId = parseInt(body.topic_id as string, 10);

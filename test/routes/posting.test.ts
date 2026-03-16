@@ -85,7 +85,7 @@ describe("Posting", () => {
     it("redirects to login when not authenticated", async () => {
       const res = await app.request("/posting?mode=newtopic&f=1");
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/login");
+      expect(res.headers.get("location")).toMatch(/^\/login/);
     });
   });
 

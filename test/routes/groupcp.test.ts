@@ -170,7 +170,7 @@ describe("User Groups", () => {
     it("redirects to login for unauthenticated users", async () => {
       const res = await app.request("/groupcp");
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/login");
+      expect(res.headers.get("location")).toMatch(/^\/login/);
     });
 
     it("shows group list for authenticated users", async () => {

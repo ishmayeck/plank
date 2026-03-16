@@ -99,7 +99,7 @@ describe("User Profiles", () => {
     it("redirects to login when not authenticated", async () => {
       const res = await app.request("/profile");
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/login");
+      expect(res.headers.get("location")).toMatch(/^\/login/);
     });
 
     it("renders edit form with current values", async () => {

@@ -4,6 +4,7 @@ import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, render
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
+import { loginRedirect } from "./auth.js";
 
 const MEMBERS_PER_PAGE = 25;
 
@@ -127,7 +128,7 @@ profile.get("/profile/:id", async (c) => {
 
 profile.get("/profile", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
   const supabase = c.get("supabase");
 
   const { data: profileData } = await supabase
@@ -144,7 +145,7 @@ profile.get("/profile", async (c) => {
 
 profile.post("/profile", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
 
   const body = await c.req.parseBody();
 

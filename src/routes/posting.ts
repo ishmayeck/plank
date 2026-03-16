@@ -5,6 +5,7 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { Template } from "../template/engine.js";
 import { join } from "node:path";
+import { loginRedirect } from "./auth.js";
 
 const THEME_DIR = join(import.meta.dirname, "..", "..", "themes", "Solaris");
 
@@ -14,7 +15,7 @@ const posting = new Hono();
 
 posting.get("/posting", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
   const mode = c.req.query("mode") ?? "newtopic";
   const supabase = c.get("supabase");
 
@@ -133,7 +134,7 @@ posting.get("/posting", async (c) => {
 
 posting.post("/posting", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
   const body = await c.req.parseBody();
   const mode = body.mode as string;
   const subject = (body.subject as string)?.trim() ?? "";

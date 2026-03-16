@@ -230,7 +230,7 @@ describe("Polls", () => {
         body: formData,
       });
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/login");
+      expect(res.headers.get("location")).toMatch(/^\/login/);
     });
 
     it("submits a vote successfully", async () => {

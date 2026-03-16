@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, renderMessagePage } from "../lib/render.js";
+import { loginRedirect } from "./auth.js";
 
 const groupcp = new Hono();
 
@@ -23,7 +24,7 @@ groupcp.get("/groupcp", async (c) => {
   }
 
   // Otherwise show the group list page
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
 
   const adminDb = getAdminDb();
 
@@ -135,7 +136,7 @@ groupcp.get("/groupcp", async (c) => {
 
 async function renderGroupInfo(c: any, groupId: number) {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
 
   const adminDb = getAdminDb();
 
@@ -373,7 +374,7 @@ async function renderGroupInfo(c: any, groupId: number) {
 
 groupcp.post("/groupcp", async (c) => {
   const user = c.get("user");
-  if (!user) return c.redirect("/login");
+  if (!user) return c.redirect(loginRedirect(c));
 
   const body = await c.req.parseBody();
   const groupId = parseInt(body.g as string, 10);

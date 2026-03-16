@@ -155,7 +155,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
       ? `/posting?mode=reply&t=${topicId}`
       : isLocked
         ? "#"
-        : "/login",
+        : `/login?redirect=${encodeURIComponent(`/posting?mode=reply&t=${topicId}`)}`,
 
     // Navigation
     L_VIEW_PREVIOUS_TOPIC: "View previous topic",
