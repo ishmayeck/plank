@@ -155,27 +155,55 @@ profile.post("/profile", async (c) => {
 
   // Handle avatar upload
   let avatarUrl: string | null = null;
+  let avatarError: string | null = null;
   const avatarFile = body.avatar as File | undefined;
   const avatarDel = body.avatardel === "on";
+  const avatarConfig = await getAvatarConfig(adminDb);
 
   if (avatarDel) {
     avatarUrl = null;
   } else if (avatarFile && avatarFile.size > 0) {
-    // Upload to Supabase Storage
-    const ext = avatarFile.name.split(".").pop() ?? "png";
-    const path = `avatars/${user.id}.${ext}`;
-    const { error: uploadErr } = await adminDb.storage
-      .from("avatars")
-      .upload(path, avatarFile, {
-        upsert: true,
-        contentType: avatarFile.type,
-      });
-
-    if (!uploadErr) {
-      const { data: urlData } = adminDb.storage
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
+    if (!allowedTypes.includes(avatarFile.type)) {
+      avatarError = "The image file type is invalid. Allowed types: JPEG, PNG, GIF.";
+    } else if (avatarFile.size > avatarConfig.maxFilesize) {
+      avatarError = `The image file size exceeds the allowed limit of ${avatarConfig.maxFilesize} bytes.`;
+    } else {
+      // Upload to Supabase Storage
+      const ext = avatarFile.name.split(".").pop() ?? "png";
+      const path = `avatars/${user.id}.${ext}`;
+      const { error: uploadErr } = await adminDb.storage
         .from("avatars")
-        .getPublicUrl(path);
-      avatarUrl = urlData.publicUrl;
+        .upload(path, avatarFile, {
+          upsert: true,
+          contentType: avatarFile.type,
+        });
+
+      if (uploadErr) {
+        avatarError = `Avatar upload failed: ${uploadErr.message}`;
+      } else {
+        const { data: urlData } = adminDb.storage
+          .from("avatars")
+          .getPublicUrl(path);
+        avatarUrl = urlData.publicUrl;
+      }
+    }
+
+    if (avatarError) {
+      const { data: profileData } = await adminDb
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      return c.html(
+        renderProfileEditForm({
+          user,
+          profileData: profileData!,
+          error: avatarError,
+          avatarConfig,
+        })
+      );
     }
   }
 
