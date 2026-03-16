@@ -246,7 +246,7 @@ function renderRegisterPage(
 ): string {
   const maxW = avatarConfig?.maxWidth ?? 200;
   const maxH = avatarConfig?.maxHeight ?? 200;
-  const maxFilesize = avatarConfig?.maxFilesize ?? 6144;
+  const maxFilesize = avatarConfig?.maxFilesize ?? 6291456;
 
   const tpl = createPageTemplate({ pageTitle: "Register" });
   tpl.loadFile("body", "profile_add_body.tpl");

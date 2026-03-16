@@ -32,7 +32,7 @@ export interface AvatarConfig {
 const AVATAR_DEFAULTS: AvatarConfig = {
   maxWidth: 200,
   maxHeight: 200,
-  maxFilesize: 6144,
+  maxFilesize: 6291456,
 };
 
 /**

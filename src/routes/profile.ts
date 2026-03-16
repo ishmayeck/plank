@@ -435,7 +435,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
   const { user, profileData, error, avatarConfig } = opts;
   const maxW = avatarConfig?.maxWidth ?? 200;
   const maxH = avatarConfig?.maxHeight ?? 200;
-  const maxFilesize = avatarConfig?.maxFilesize ?? 6144;
+  const maxFilesize = avatarConfig?.maxFilesize ?? 6291456;
 
   const tpl = createPageTemplate({
     user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
