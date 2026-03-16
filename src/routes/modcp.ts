@@ -123,7 +123,7 @@ modcp.get("/modcp", async (c) => {
     for (const topic of topics) {
       const folderImg =
         topic.topic_status === 1
-          ? "templates/Solaris/images/folder_locked.gif"
+          ? "templates/Solaris/images/folder_lock.gif"
           : "templates/Solaris/images/folder.gif";
 
       let topicType = "";
