@@ -519,7 +519,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     L_TIMEZONE: "Timezone",
     TIMEZONE_SELECT: `<select name="timezone"><option value="UTC" selected>UTC</option></select>`,
     L_DATE_FORMAT: "Date format",
-    L_DATE_FORMAT_EXPLAIN: "The syntax used is identical to the PHP date() function.",
+    L_DATE_FORMAT_EXPLAIN: 'The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.',
     DATE_FORMAT: profileData.user_dateformat ?? "DD Mon YYYY HH24:MI",
 
     // Avatar

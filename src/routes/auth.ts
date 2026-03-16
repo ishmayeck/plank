@@ -293,7 +293,7 @@ function renderRegisterPage(
     L_BOARD_STYLE: "Board Style",
     L_TIMEZONE: "Timezone",
     L_DATE_FORMAT: "Date Format",
-    L_DATE_FORMAT_EXPLAIN: "The syntax used is identical to the PHP date() function.",
+    L_DATE_FORMAT_EXPLAIN: 'The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.',
     L_CURRENT_PASSWORD: "Current Password",
     L_CONFIRM_PASSWORD_EXPLAIN: "You must confirm your current password if you wish to change it or alter your e-mail address",
     L_CONFIRM_CODE: "Confirmation code",
