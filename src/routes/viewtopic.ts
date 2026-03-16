@@ -111,6 +111,20 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const isLocked = topic.topic_status === 1;
   const canReply = !isLocked && !!user;
   const canPost = !!user;
+  const isTopicMod = user && user.userLevel >= 1;
+
+  // Build topic moderation controls for moderators/admins
+  let topicAdminHtml = "";
+  if (isTopicMod) {
+    const lockImg = isLocked
+      ? `<a href="/modcp?mode=unlock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_unlock.gif" alt="Unlock Topic" title="Unlock Topic" border="0" /></a>`
+      : `<a href="/modcp?mode=lock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_lock.gif" alt="Lock Topic" title="Lock Topic" border="0" /></a>`;
+    topicAdminHtml =
+      `<a href="/modcp?mode=delete&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_delete.gif" alt="Delete Topic" title="Delete Topic" border="0" /></a>&nbsp;` +
+      `<a href="/modcp?mode=move&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_move.gif" alt="Move Topic" title="Move Topic" border="0" /></a>&nbsp;` +
+      `${lockImg}&nbsp;` +
+      `<a href="/modcp?mode=split&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_split.gif" alt="Split Topic" title="Split Topic" border="0" /></a>`;
+  }
 
   tpl.assignVars({
     TOPIC_TITLE: applyCensors(topic.topic_title, censors),
@@ -163,7 +177,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
 
     // Topic admin
     S_WATCH_TOPIC: "",
-    S_TOPIC_ADMIN: "",
+    S_TOPIC_ADMIN: topicAdminHtml,
     S_AUTH_LIST: "",
     JUMPBOX: "",
     POLL_DISPLAY: pollHtml,
