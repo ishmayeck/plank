@@ -69,7 +69,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         id, username, user_avatar, user_sig, user_posts,
         user_regdate, user_from, user_rank, user_level
       ),
-      posts_text(post_subject, post_text, post_text_html)
+      posts_text(post_subject, post_text)
     `
     )
     .eq("topic_id", topicId)
@@ -200,11 +200,8 @@ viewtopic.get("/viewtopic/:id", async (c) => {
       const poster = post.poster;
       const rowClass = rowIndex % 2 === 0 ? "row1" : "row2";
 
-      // Render post content: use pre-rendered HTML if available, otherwise parse BBCode
-      let messageHtml = postText?.post_text_html ?? "";
-      if (!messageHtml && postText?.post_text) {
-        messageHtml = parseBBCode(postText.post_text);
-      }
+      // Render post content: always parse from BBCode source
+      let messageHtml = postText?.post_text ? parseBBCode(postText.post_text) : "";
 
       // Apply smilies and word censoring to rendered HTML
       if (post.enable_smilies) {

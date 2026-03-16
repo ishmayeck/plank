@@ -84,7 +84,7 @@ describe("BBCode Parser", () => {
       expect(parseBBCode("[quote]quoted text[/quote]")).toContain(
         "quoted text"
       );
-      expect(parseBBCode("[quote]quoted text[/quote]")).toContain("blockquote");
+      expect(parseBBCode("[quote]quoted text[/quote]")).toContain('class="quote"');
     });
 
     it("parses quote with attribution", () => {

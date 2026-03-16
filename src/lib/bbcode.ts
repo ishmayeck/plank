@@ -80,16 +80,16 @@ export function parseBBCode(text: string): string {
   // Strip remaining [img] with non-http URLs
   text = text.replace(/\[img\]([^\[]+)\[\/img\]/gi, "");
 
-  // Quote with attribution
+  // Quote with attribution (matches Solaris bbcode.tpl table layout)
   text = text.replace(
     /\[quote=&quot;([^&]*?)&quot;\]([\s\S]*?)\[\/quote\]/gi,
-    '<blockquote><div class="quotetitle"><strong>$1 wrote:</strong></div><div class="quotecontent">$2</div></blockquote>'
+    '</span><table width="90%" cellspacing="1" cellpadding="3" border="0" align="center"><tr> \t  <td><span class="genmed"><b>$1 wrote:</b></span></td>\t</tr>\t<tr>\t  <td class="quote">$2</td>\t</tr></table><span class="postbody">'
   );
 
   // Simple quote
   text = text.replace(
     /\[quote\]([\s\S]*?)\[\/quote\]/gi,
-    '<blockquote><div class="quotecontent">$1</div></blockquote>'
+    '</span><table width="90%" cellspacing="1" cellpadding="3" border="0" align="center"><tr> \t  <td><span class="genmed"><b>Quote:</b></span></td>\t</tr>\t<tr>\t  <td class="quote">$1</td>\t</tr></table><span class="postbody">'
   );
 
   // Lists
