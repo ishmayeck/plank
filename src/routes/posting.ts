@@ -105,6 +105,7 @@ posting.get("/posting", async (c) => {
     smilies,
     topicReviewHtml,
     topicTypeToggle,
+    showPoll: mode === "newtopic",
   });
 
   return c.html(html);
@@ -126,6 +127,60 @@ posting.post("/posting", async (c) => {
   const enableSmilies = body.disable_smilies !== "on";
   const enableBBCode = body.disable_bbcode !== "on";
   const topicType = user.userLevel >= 1 ? parseInt(body.topictype as string, 10) || 0 : 0;
+
+  // Collect current poll options from form
+  function collectPollOptions(): string[] {
+    const opts: string[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      const match = key.match(/^poll_option_text\[(\d+)\]$/);
+      if (match) {
+        opts[parseInt(match[1], 10)] = (val as string) ?? "";
+      }
+    }
+    return opts.filter((_, i) => opts[i] !== undefined);
+  }
+
+  // Handle poll option add/delete (re-render form)
+  if (body.add_poll_option || body.edit_poll_option || Object.keys(body).some(k => k.startsWith("del_poll_option"))) {
+    const supabase = c.get("supabase");
+    const smilies = await loadSmilies(supabase);
+    const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+    let pollOpts = collectPollOptions();
+
+    if (body.add_poll_option) {
+      const newOpt = (body.add_poll_option_text as string)?.trim() ?? "";
+      if (newOpt) pollOpts.push(newOpt);
+      else pollOpts.push("");
+    }
+
+    // Delete option
+    for (const key of Object.keys(body)) {
+      const match = key.match(/^del_poll_option\[(\d+)\]$/);
+      if (match) {
+        const delIdx = parseInt(match[1], 10);
+        pollOpts = pollOpts.filter((_, i) => i !== delIdx);
+      }
+    }
+
+    if (pollOpts.length < 2) pollOpts = [...pollOpts, "", ""].slice(0, 2);
+
+    const isFirst = mode === "newtopic";
+    const topicTypeToggle = (isFirst && user.userLevel >= 1)
+      ? buildTopicTypeToggle(topicType)
+      : "";
+    const reviewHtml = topicId && mode !== "newtopic" ? await renderTopicReview(topicId, smilies) : "";
+
+    return c.html(renderPostingForm({
+      user, mode, forumId, topicId, postId,
+      forumName: forum?.forum_name ?? "", subject, message,
+      postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
+      smilies, topicReviewHtml: reviewHtml, topicTypeToggle,
+      showPoll: mode === "newtopic",
+      pollTitle: (body.poll_title as string) ?? "",
+      pollOptions: pollOpts,
+      pollLength: parseInt(body.poll_length as string, 10) || 0,
+    }));
+  }
 
   // Preview mode
   if (body.preview) {
@@ -153,6 +208,10 @@ posting.post("/posting", async (c) => {
       smilies,
       preview: previewHtml,
       topicReviewHtml: reviewHtml,
+      showPoll: mode === "newtopic",
+      pollTitle: (body.poll_title as string) ?? "",
+      pollOptions: collectPollOptions(),
+      pollLength: parseInt(body.poll_length as string, 10) || 0,
     });
     return c.html(html);
   }
@@ -261,6 +320,42 @@ posting.post("/posting", async (c) => {
       .from("profiles")
       .update({ user_posts: (await adminDb.from("posts").select("id", { count: "exact", head: true }).eq("poster_id", user.id)).count ?? 0 })
       .eq("id", user.id);
+
+    // Create poll if poll title and options provided
+    const pollTitle = (body.poll_title as string)?.trim() ?? "";
+    const pollOptionTexts: string[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      const match = key.match(/^poll_option_text\[(\d+)\]$/);
+      if (match && (val as string).trim()) {
+        pollOptionTexts.push((val as string).trim());
+      }
+    }
+    // Also check add_poll_option_text
+    const addPollOption = (body.add_poll_option_text as string)?.trim() ?? "";
+    if (addPollOption) pollOptionTexts.push(addPollOption);
+
+    if (pollTitle && pollOptionTexts.length >= 2) {
+      const pollLengthDays = parseInt(body.poll_length as string, 10) || 0;
+      const { data: poll } = await adminDb
+        .from("poll_questions")
+        .insert({
+          topic_id: topic.id,
+          poll_text: pollTitle,
+          poll_length: pollLengthDays > 0 ? `${pollLengthDays} days` : null,
+        })
+        .select()
+        .single();
+
+      if (poll) {
+        for (let i = 0; i < pollOptionTexts.length; i++) {
+          await adminDb.from("poll_options").insert({
+            poll_id: poll.id,
+            option_text: pollOptionTexts[i],
+            option_order: i,
+          });
+        }
+      }
+    }
 
     return c.redirect(`/viewtopic/${topic.id}`);
 
@@ -469,6 +564,10 @@ interface PostingFormOpts {
   error?: string;
   topicReviewHtml?: string;
   topicTypeToggle?: string;
+  pollTitle?: string;
+  pollOptions?: string[];
+  pollLength?: number;
+  showPoll?: boolean;
 }
 
 function renderPostingForm(opts: PostingFormOpts): string {
@@ -514,7 +613,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     TOPIC_REVIEW_BOX: opts.topicReviewHtml ?? "",
-    POLLBOX: "",
+    POLLBOX: opts.showPoll ? renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? ["", ""], opts.pollLength ?? 0) : "",
     S_SMILIES_COLSPAN: "4",
 
     // BBCode toolbar labels
@@ -623,6 +722,37 @@ function renderPostingForm(opts: PostingFormOpts): string {
   }
 
   return renderPage(tpl);
+}
+
+function renderPollBox(pollTitle: string, pollOptions: string[], pollLength: number): string {
+  const tpl = new Template(THEME_DIR);
+  tpl.loadFile("pollbox", "posting_poll_body.tpl");
+
+  tpl.assignVars({
+    L_ADD_A_POLL: "Add a Poll",
+    L_ADD_POLL_EXPLAIN: "If you do not want to add a poll to your topic, leave the fields blank",
+    L_POLL_QUESTION: "Poll question",
+    POLL_TITLE: pollTitle,
+    L_POLL_OPTION: "Poll option",
+    L_ADD_OPTION: "Add option",
+    L_UPDATE_OPTION: "Update",
+    L_DELETE_OPTION: "Delete",
+    L_POLL_LENGTH: "Run poll for",
+    POLL_LENGTH: String(pollLength || ""),
+    L_DAYS: "Days",
+    L_POLL_LENGTH_EXPLAIN: "Leave as 0 for a never ending poll",
+    L_POLL_DELETE: "Delete poll",
+    ADD_POLL_OPTION: "",
+  });
+
+  for (let i = 0; i < pollOptions.length; i++) {
+    tpl.assignBlockVars("poll_option_rows", {
+      S_POLL_OPTION_NUM: String(i),
+      POLL_OPTION: pollOptions[i],
+    });
+  }
+
+  return tpl.render("pollbox");
 }
 
 function buildTopicTypeToggle(currentType: number = 0): string {
