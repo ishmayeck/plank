@@ -140,11 +140,26 @@ posting.get("/posting_topic_review", async (c) => {
   const smilies = await loadSmilies(supabase);
   const reviewHtml = await renderTopicReview(topicId, smilies, false);
 
-  // Return a minimal HTML page for the iframe
-  return c.html(`<!DOCTYPE html>
-<html><head>
-<link rel="stylesheet" href="/templates/Solaris/Solaris.css" />
-</head><body>${reviewHtml}</body></html>`);
+  // Use simple_header/simple_footer templates like phpBB2 does for iframe content
+  const tpl = new Template(THEME_DIR);
+  tpl.loadFile("header", "simple_header.tpl");
+  tpl.loadFile("footer", "simple_footer.tpl");
+
+  tpl.assignVars({
+    S_CONTENT_DIRECTION: "ltr",
+    S_CONTENT_ENCODING: "utf-8",
+    SITENAME: "Plank Forum",
+    PAGE_TITLE: "Topic Review",
+    T_HEAD_STYLESHEET: "Solaris.css",
+    META: '<base href="/">',
+    T_BODY_BGCOLOR: "#E5E5E5",
+    T_BODY_TEXT: "#000000",
+    T_BODY_LINK: "#006699",
+    T_BODY_VLINK: "#5493B4",
+    PHPBB_VERSION: "2.0",
+  });
+
+  return c.html(tpl.render("header") + reviewHtml + tpl.render("footer"));
 });
 
 // ─── POST: Submit post ─────────────────────────────────────────
