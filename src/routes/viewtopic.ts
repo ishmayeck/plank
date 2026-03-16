@@ -144,14 +144,10 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     L_INDEX: "Index",
 
     // Post/reply buttons
-    POST_IMG: canPost
-      ? "templates/Solaris/images/lang_english/new_topic.gif"
-      : "",
+    POST_IMG: "templates/Solaris/images/lang_english/new_topic.gif",
     REPLY_IMG: isLocked
       ? "templates/Solaris/images/lang_english/locked.gif"
-      : canReply
-        ? "templates/Solaris/images/lang_english/post_reply.gif"
-        : "",
+      : "templates/Solaris/images/lang_english/post_reply.gif",
     L_POST_NEW_TOPIC: "Post new topic",
     L_POST_REPLY_TOPIC: isLocked ? "Topic is locked" : "Post reply",
     U_POST_NEW_TOPIC: `/posting?mode=newtopic&f=${topic.forum_id}`,
