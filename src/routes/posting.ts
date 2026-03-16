@@ -282,10 +282,19 @@ posting.post("/posting", async (c) => {
       })
       .eq("id", topicId);
 
-    // Update forum last post
+    // Update forum last post and increment post count
+    const { data: currentForum } = await adminDb
+      .from("forums")
+      .select("forum_posts")
+      .eq("id", forumId)
+      .single();
+
     await adminDb
       .from("forums")
-      .update({ forum_last_post_id: post.id })
+      .update({
+        forum_last_post_id: post.id,
+        forum_posts: (currentForum?.forum_posts ?? 0) + 1,
+      })
       .eq("id", forumId);
 
     // Update user post count

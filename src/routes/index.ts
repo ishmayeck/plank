@@ -95,6 +95,31 @@ index.get("/", async (c) => {
     tpl.assignBlockVars("switch_allow_autologin", {});
   }
 
+  // Fetch last post info for forums that have posts
+  const forumLastPostIds = (forums ?? [])
+    .map((f: any) => f.forum_last_post_id)
+    .filter(Boolean);
+
+  let lastPostMap: Record<number, { time: string; username: string; userId: string; topicId: number }> = {};
+  if (forumLastPostIds.length > 0) {
+    const { data: lastPosts } = await supabase
+      .from("posts")
+      .select("id, post_time, poster_id, topic_id, profiles(username)")
+      .in("id", forumLastPostIds);
+
+    if (lastPosts) {
+      for (const lp of lastPosts) {
+        const profile = lp.profiles as any;
+        lastPostMap[lp.id] = {
+          time: lp.post_time,
+          username: profile?.username ?? "Guest",
+          userId: lp.poster_id,
+          topicId: lp.topic_id,
+        };
+      }
+    }
+  }
+
   // Build category/forum blocks
   if (categories && forums) {
     for (const cat of categories) {
@@ -105,6 +130,16 @@ index.get("/", async (c) => {
 
       const catForums = forums.filter((f: any) => f.cat_id === cat.id);
       for (const forum of catForums) {
+        let lastPostText = "No posts";
+        if (forum.forum_last_post_id && lastPostMap[forum.forum_last_post_id]) {
+          const lp = lastPostMap[forum.forum_last_post_id];
+          lastPostText =
+            `${formatPhpBBDate(lp.time)}<br />` +
+            `<a href="/profile/${lp.userId}">${lp.username}</a> ` +
+            `<a href="/viewtopic/${lp.topicId}#${forum.forum_last_post_id}">` +
+            `<img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`;
+        }
+
         tpl.assignBlockVars("catrow.forumrow", {
           FORUM_FOLDER_IMG: "templates/Solaris/images/folder.gif",
           U_VIEWFORUM: `/viewforum/${forum.id}`,
@@ -112,9 +147,9 @@ index.get("/", async (c) => {
           FORUM_DESC: forum.forum_desc ?? "",
           L_MODERATOR: "Moderator:",
           MODERATORS: "Admin",
-          TOPICS: String(forum.forum_topics),
-          POSTS: String(forum.forum_posts),
-          LAST_POST: "No posts",
+          TOPICS: String(forum.forum_topics ?? 0),
+          POSTS: String(forum.forum_posts ?? 0),
+          LAST_POST: lastPostText,
         });
       }
     }
