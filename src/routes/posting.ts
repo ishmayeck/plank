@@ -105,8 +105,8 @@ posting.get("/posting", async (c) => {
   }
 
   const smilies = await loadSmilies(supabase);
-  const topicReviewHtml = topicId && (mode === "reply" || mode === "quote" || mode === "editpost")
-    ? await renderTopicReview(topicId, smilies)
+  const topicReviewHtml = topicId && (mode === "reply" || mode === "quote")
+    ? await renderTopicReview(topicId, smilies, true)
     : "";
   const topicTypeToggle = (isFirstPost && user.userLevel >= 1)
     ? buildTopicTypeToggle(currentTopicType)
@@ -128,6 +128,23 @@ posting.get("/posting", async (c) => {
   });
 
   return c.html(html);
+});
+
+// ─── GET: Standalone topic review (loaded in iframe) ──────────
+
+posting.get("/posting_topic_review", async (c) => {
+  const topicId = parseInt(c.req.query("t") ?? "0", 10);
+  if (!topicId) return c.text("Missing topic", 400);
+
+  const supabase = c.get("supabase");
+  const smilies = await loadSmilies(supabase);
+  const reviewHtml = await renderTopicReview(topicId, smilies, false);
+
+  // Return a minimal HTML page for the iframe
+  return c.html(`<!DOCTYPE html>
+<html><head>
+<link rel="stylesheet" href="/templates/Solaris/Solaris.css" />
+</head><body>${reviewHtml}</body></html>`);
 });
 
 // ─── POST: Submit post ─────────────────────────────────────────
@@ -187,7 +204,7 @@ posting.post("/posting", async (c) => {
     const topicTypeToggle = (isFirst && user.userLevel >= 1)
       ? buildTopicTypeToggle(topicType)
       : "";
-    const reviewHtml = topicId && mode !== "newtopic" ? await renderTopicReview(topicId, smilies) : "";
+    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
 
     return c.html(renderPostingForm({
       user, mode, forumId, topicId, postId,
@@ -212,7 +229,7 @@ posting.post("/posting", async (c) => {
       .single();
 
     const previewHtml = parseBBCode(message);
-    const reviewHtml = topicId && mode !== "newtopic" ? await renderTopicReview(topicId, smilies) : "";
+    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
 
     const html = renderPostingForm({
       user,
@@ -240,7 +257,7 @@ posting.post("/posting", async (c) => {
     const supabase = c.get("supabase");
     const smilies = await loadSmilies(supabase);
     const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
-    const reviewHtml = topicId && mode !== "newtopic" ? await renderTopicReview(topicId, smilies) : "";
+    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
     return c.html(renderPostingForm({
       user, mode, forumId, topicId, postId,
       forumName: forum?.forum_name ?? "", subject, message,
@@ -828,7 +845,7 @@ function buildTopicTypeToggle(currentType: number = 0): string {
     `<input type="radio" name="topictype" value="2"${announceChecked} /> Announcement`;
 }
 
-async function renderTopicReview(topicId: number, smilies: Smiley[]): Promise<string> {
+async function renderTopicReview(topicId: number, smilies: Smiley[], inline: boolean): Promise<string> {
   const adminDb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
   const { data: posts } = await adminDb
@@ -836,7 +853,7 @@ async function renderTopicReview(topicId: number, smilies: Smiley[]): Promise<st
     .select("id, post_time, poster_id, posts_text(post_subject, post_text), profiles(username)")
     .eq("topic_id", topicId)
     .order("post_time", { ascending: false })
-    .limit(10);
+    .limit(15);
 
   if (!posts || posts.length === 0) return "";
 
@@ -845,14 +862,16 @@ async function renderTopicReview(topicId: number, smilies: Smiley[]): Promise<st
 
   tpl.assignVars({
     L_TOPIC_REVIEW: "Topic Review",
-    U_REVIEW_TOPIC: `/viewtopic/${topicId}`,
+    U_REVIEW_TOPIC: `/posting_topic_review?t=${topicId}`,
     L_AUTHOR: "Author",
     L_MESSAGE: "Message",
     L_POSTED: "Posted",
     L_POST_SUBJECT: "Post subject",
   });
 
-  tpl.assignBlockVars("switch_inline_mode", {});
+  if (inline) {
+    tpl.assignBlockVars("switch_inline_mode", {});
+  }
 
   let rowIndex = 0;
   for (const post of posts) {
