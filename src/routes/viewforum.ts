@@ -176,7 +176,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
-    S_AUTH_LIST: "",
+    S_AUTH_LIST: buildAuthList(forum, user),
 
     // Folder icons
     FOLDER_NEW_IMG: "templates/Solaris/images/folder_new.gif",
@@ -259,5 +259,38 @@ viewforum.get("/viewforum/:id", async (c) => {
 
   return c.html(renderPage(tpl));
 });
+
+// AUTH_* levels: 0=ALL, 1=REG, 2=PRIVATE (group-based), 3=MOD, 4=ADMIN
+function canDoAction(authLevel: number, user: any): boolean {
+  if (authLevel === 0) return true;
+  if (!user) return false;
+  if (user.userLevel >= 1) return true; // admin can do everything
+  if (authLevel === 1) return true; // registered user
+  // For levels 2 (private/group), 3 (mod), 4 (admin) — simplified: deny unless admin
+  return false;
+}
+
+function buildAuthList(forum: any, user: any): string {
+  const lines: string[] = [];
+  const can = (yes: boolean) => yes ? "<b>can</b>" : "<b>cannot</b>";
+
+  const canPost = canDoAction(forum.auth_post ?? 1, user);
+  const canReply = canDoAction(forum.auth_reply ?? 1, user);
+  const canEdit = canDoAction(forum.auth_edit ?? 1, user);
+  const canDelete = canDoAction(forum.auth_delete ?? 1, user);
+  const canVote = canDoAction(forum.auth_vote ?? 1, user);
+
+  lines.push(`You ${can(canPost)} post new topics in this forum`);
+  lines.push(`You ${can(canReply)} reply to topics in this forum`);
+  lines.push(`You ${can(canEdit)} edit your posts in this forum`);
+  lines.push(`You ${can(canDelete)} delete your posts in this forum`);
+  lines.push(`You ${can(canVote)} vote in polls in this forum`);
+
+  if (user?.userLevel >= 1) {
+    lines.push(`You ${can(true)} <a href="/modcp?f=${forum.id}">moderate this forum</a>`);
+  }
+
+  return lines.join("<br />");
+}
 
 export default viewforum;
