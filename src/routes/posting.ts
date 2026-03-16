@@ -644,7 +644,7 @@ posting.post("/posting", async (c) => {
 // ─── Rendering Helper ──────────────────────────────────────────
 
 interface PostingFormOpts {
-  user: { id: string; username: string; unreadPms: number; userLevel: number };
+  user: { id: string; username: string; unreadPms: number; userLevel: number; userSig: string };
   mode: string;
   forumId: number | null;
   topicId: number | null;
@@ -782,7 +782,9 @@ function renderPostingForm(opts: PostingFormOpts): string {
   tpl.assignBlockVars("switch_not_privmsg", {});
   tpl.assignBlockVars("switch_bbcode_checkbox", {});
   tpl.assignBlockVars("switch_smilies_checkbox", {});
-  tpl.assignBlockVars("switch_signature_checkbox", {});
+  if (opts.user.userSig) {
+    tpl.assignBlockVars("switch_signature_checkbox", {});
+  }
   tpl.assignBlockVars("switch_notify_checkbox", {});
 
   if (opts.mode === "editpost") {
