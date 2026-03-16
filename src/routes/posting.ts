@@ -83,6 +83,24 @@ posting.get("/posting", async (c) => {
     postTitle = "Edit post";
     currentTopicType = post.topics?.topic_type ?? 0;
     isFirstPost = post.topics?.topic_first_post_id === post.id;
+  } else if (mode === "delete") {
+    postId = parseInt(c.req.query("p") ?? "0", 10);
+    const { data: post } = await supabase
+      .from("posts")
+      .select("*, topics!posts_topic_id_fkey(forum_id)")
+      .eq("id", postId)
+      .single();
+    if (!post) return c.text("Post not found", 404);
+    if (post.poster_id !== user.id && user.userLevel < 1) {
+      return c.text("Forbidden", 403);
+    }
+    return c.html(renderConfirmPage({
+      user,
+      title: "Information",
+      message: "Are you sure you want to delete this post?",
+      action: "/posting",
+      hiddenFields: { mode: "delete", post_id: String(postId) },
+    }));
   }
 
   const smilies = await loadSmilies(supabase);
@@ -533,6 +551,22 @@ posting.post("/posting", async (c) => {
       return c.text("Forbidden", 403);
     }
 
+    // Cancel → go back to the topic
+    if (body.cancel) {
+      return c.redirect(`/viewtopic/${post.topic_id}`);
+    }
+
+    // Must confirm before deleting
+    if (!body.confirm) {
+      return c.html(renderConfirmPage({
+        user,
+        title: "Information",
+        message: "Are you sure you want to delete this post?",
+        action: "/posting",
+        hiddenFields: { mode: "delete", post_id: String(deletePostId) },
+      }));
+    }
+
     const isFirstPost = post.topics?.topic_first_post_id === deletePostId;
     const redirectForumId = post.topics?.forum_id ?? post.forum_id;
 
@@ -840,6 +874,46 @@ async function renderTopicReview(topicId: number, smilies: Smiley[]): Promise<st
   }
 
   return tpl.render("review");
+}
+
+interface ConfirmPageOpts {
+  user: { id: string; username: string; unreadPms: number; userLevel: number };
+  title: string;
+  message: string;
+  action: string;
+  hiddenFields: Record<string, string>;
+}
+
+function renderConfirmPage(opts: ConfirmPageOpts): string {
+  const tpl = createPageTemplate({
+    user: {
+      id: opts.user.id,
+      username: opts.user.username,
+      unreadPms: opts.user.unreadPms,
+      userLevel: opts.user.userLevel,
+    },
+    pageTitle: opts.title,
+  });
+
+  tpl.loadFile("body", "confirm_body.tpl");
+
+  let hiddenHtml = "";
+  for (const [key, val] of Object.entries(opts.hiddenFields)) {
+    hiddenHtml += `<input type="hidden" name="${key}" value="${val}" />`;
+  }
+
+  tpl.assignVars({
+    MESSAGE_TITLE: opts.title,
+    MESSAGE_TEXT: opts.message,
+    L_YES: "Yes",
+    L_NO: "No",
+    S_CONFIRM_ACTION: opts.action,
+    S_HIDDEN_FIELDS: hiddenHtml,
+    U_INDEX: "/",
+    L_INDEX: "Index",
+  });
+
+  return renderPage(tpl);
 }
 
 export default posting;

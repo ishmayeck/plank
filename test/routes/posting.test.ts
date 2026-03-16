@@ -437,10 +437,11 @@ describe("Posting", () => {
         post_text: "Reply to delete",
       });
 
-      // Delete the reply
+      // Delete the reply (with confirmation)
       const formData = new FormData();
       formData.append("mode", "delete");
       formData.append("post_id", String(reply!.id));
+      formData.append("confirm", "Yes");
 
       const res = await app.request("/posting", {
         method: "POST",
@@ -499,6 +500,7 @@ describe("Posting", () => {
       const formData = new FormData();
       formData.append("mode", "delete");
       formData.append("post_id", String(post!.id));
+      formData.append("confirm", "Yes");
 
       const res = await app.request("/posting", {
         method: "POST",
