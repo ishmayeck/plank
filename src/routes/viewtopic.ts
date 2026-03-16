@@ -153,7 +153,9 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     U_POST_NEW_TOPIC: `/posting?mode=newtopic&f=${topic.forum_id}`,
     U_POST_REPLY_TOPIC: canReply
       ? `/posting?mode=reply&t=${topicId}`
-      : "#",
+      : isLocked
+        ? "#"
+        : "/login",
 
     // Navigation
     L_VIEW_PREVIOUS_TOPIC: "View previous topic",
