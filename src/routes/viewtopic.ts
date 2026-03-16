@@ -258,7 +258,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         MESSAGE: messageHtml,
         SIGNATURE: signature,
         EDITED_MESSAGE: post.post_edit_count > 0
-          ? `Last edited by ${poster?.username ?? "Unknown"} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`
+          ? `<br /><br />Last edited by ${poster?.username ?? "Unknown"} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`
           : "",
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,
