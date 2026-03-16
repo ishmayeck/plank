@@ -251,6 +251,32 @@ posting.post("/posting", async (c) => {
       }));
     }
 
+    // Validate poll: if a title is given, need at least 2 options
+    const pollTitleCheck = (body.poll_title as string)?.trim() ?? "";
+    if (pollTitleCheck) {
+      const optCount = Object.entries(body).filter(
+        ([k, v]) => k.match(/^poll_option_text\[\d+\]$/) && (v as string).trim()
+      ).length + ((body.add_poll_option_text as string)?.trim() ? 1 : 0);
+      if (optCount < 2) {
+        const supabase = c.get("supabase");
+        const smilies = await loadSmilies(supabase);
+        const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+        const pollOpts: string[] = [];
+        for (const [k, v] of Object.entries(body)) {
+          if (k.match(/^poll_option_text\[\d+\]$/)) pollOpts.push((v as string) ?? "");
+        }
+        return c.html(renderPostingForm({
+          user, mode, forumId, topicId, postId,
+          forumName: forum?.forum_name ?? "", subject, message,
+          postTitle: "Post a new topic",
+          smilies, error: "You must enter at least two poll options.",
+          topicTypeToggle: user.userLevel >= 1 ? buildTopicTypeToggle(topicType) : undefined,
+          showPoll: true, pollTitle: pollTitleCheck, pollOptions: pollOpts,
+          pollLength: parseInt(body.poll_length as string, 10) || 0,
+        }));
+      }
+    }
+
     // Create topic
     const { data: topic, error: topicErr } = await adminDb
       .from("topics")
@@ -614,7 +640,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
     TOPIC_REVIEW_BOX: opts.topicReviewHtml ?? "",
-    POLLBOX: opts.showPoll ? renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? ["", ""], opts.pollLength ?? 0) : "",
+    POLLBOX: opts.showPoll ? renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? [""], opts.pollLength ?? 0) : "",
     S_SMILIES_COLSPAN: "4",
 
     // BBCode toolbar labels
