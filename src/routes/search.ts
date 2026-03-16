@@ -287,9 +287,27 @@ async function handleTopicResults(
     JUMPBOX: "",
   });
 
+  // Fetch last post info for each topic
+  const lastPostIds = uniqueTopics
+    .map((p: any) => p.topics?.topic_last_post_id)
+    .filter(Boolean);
+  let lastPostMap: Record<number, any> = {};
+  if (lastPostIds.length > 0) {
+    const { data: lastPosts } = await adminDb
+      .from("posts")
+      .select("id, post_time, poster_id, profiles(id, username)")
+      .in("id", lastPostIds);
+    if (lastPosts) {
+      for (const lp of lastPosts) lastPostMap[lp.id] = lp;
+    }
+  }
+
   for (const post of uniqueTopics) {
     const topic = post.topics;
     if (!topic) continue;
+
+    const lastPost = lastPostMap[topic.topic_last_post_id];
+    const lastPostAuthor = lastPost?.profiles as any;
 
     tpl.assignBlockVars("searchresults", {
       TOPIC_FOLDER_IMG: "templates/Solaris/images/folder.gif",
@@ -298,12 +316,18 @@ async function handleTopicResults(
       U_VIEW_FORUM: `/viewforum/${topic.forum_id}`,
       TOPIC_TITLE: topic.topic_title,
       U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
-      TOPIC_AUTHOR: topic.poster?.username ?? "",
+      TOPIC_AUTHOR: topic.poster
+        ? `<a href="/profile/${topic.topic_poster}">${topic.poster.username}</a>`
+        : "",
       REPLIES: String(topic.topic_replies ?? 0),
       VIEWS: String(topic.topic_views ?? 0),
-      LAST_POST_TIME: "",
-      LAST_POST_AUTHOR: "",
-      LAST_POST_IMG: "",
+      LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
+      LAST_POST_AUTHOR: lastPostAuthor
+        ? `<a href="/profile/${lastPostAuthor.id}">${lastPostAuthor.username}</a>`
+        : "",
+      LAST_POST_IMG: lastPost
+        ? `<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
+        : "",
       NEWEST_POST_IMG: "",
       TOPIC_TYPE: "",
       GOTO_PAGE: "",
@@ -419,7 +443,9 @@ async function handlePostResults(
       tpl.assignBlockVars("searchresults", {
         TOPIC_TITLE: topic?.topic_title ?? "",
         U_TOPIC: `/viewtopic/${topic?.id ?? post.topic_id}`,
-        POSTER_NAME: post.poster?.username ?? "Guest",
+        POSTER_NAME: post.poster
+          ? `<a href="/profile/${post.poster_id}">${post.poster.username}</a>`
+          : "Guest",
         TOPIC_REPLIES: String(topic?.topic_replies ?? 0),
         TOPIC_VIEWS: String(topic?.topic_views ?? 0),
         FORUM_NAME: topic?.forums?.forum_name ?? "",
@@ -499,8 +525,24 @@ async function handleNewPosts(c: any) {
     JUMPBOX: "",
   });
 
+  // Fetch last post info
+  const newPostIds = (topics ?? []).map((t: any) => t.topic_last_post_id).filter(Boolean);
+  let newLastPostMap: Record<number, any> = {};
+  if (newPostIds.length > 0) {
+    const { data: lastPosts } = await adminDb
+      .from("posts")
+      .select("id, post_time, poster_id, profiles(id, username)")
+      .in("id", newPostIds);
+    if (lastPosts) {
+      for (const lp of lastPosts) newLastPostMap[lp.id] = lp;
+    }
+  }
+
   if (topics) {
     for (const topic of topics) {
+      const lastPost = newLastPostMap[topic.topic_last_post_id];
+      const lastPostAuthor = lastPost?.profiles as any;
+
       tpl.assignBlockVars("searchresults", {
         TOPIC_FOLDER_IMG: "templates/Solaris/images/folder_new.gif",
         L_TOPIC_FOLDER_ALT: "New posts",
@@ -508,12 +550,18 @@ async function handleNewPosts(c: any) {
         U_VIEW_FORUM: `/viewforum/${topic.forum_id}`,
         TOPIC_TITLE: topic.topic_title,
         U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
-        TOPIC_AUTHOR: topic.poster?.username ?? "",
+        TOPIC_AUTHOR: topic.poster
+          ? `<a href="/profile/${topic.topic_poster}">${topic.poster.username}</a>`
+          : "",
         REPLIES: String(topic.topic_replies ?? 0),
         VIEWS: String(topic.topic_views ?? 0),
-        LAST_POST_TIME: "",
-        LAST_POST_AUTHOR: "",
-        LAST_POST_IMG: "",
+        LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
+        LAST_POST_AUTHOR: lastPostAuthor
+          ? `<a href="/profile/${lastPostAuthor.id}">${lastPostAuthor.username}</a>`
+          : "",
+        LAST_POST_IMG: lastPost
+          ? `<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
+          : "",
         NEWEST_POST_IMG: "",
         TOPIC_TYPE: "",
         GOTO_PAGE: "",
@@ -578,8 +626,24 @@ async function handleUnanswered(c: any) {
     JUMPBOX: "",
   });
 
+  // Fetch last post info for unanswered topics
+  const unansweredPostIds = (topics ?? []).map((t: any) => t.topic_last_post_id).filter(Boolean);
+  let unansweredLastPostMap: Record<number, any> = {};
+  if (unansweredPostIds.length > 0) {
+    const { data: lastPosts } = await adminDb
+      .from("posts")
+      .select("id, post_time, poster_id, profiles(id, username)")
+      .in("id", unansweredPostIds);
+    if (lastPosts) {
+      for (const lp of lastPosts) unansweredLastPostMap[lp.id] = lp;
+    }
+  }
+
   if (topics) {
     for (const topic of topics) {
+      const lastPost = unansweredLastPostMap[topic.topic_last_post_id];
+      const lastPostAuthor = lastPost?.profiles as any;
+
       tpl.assignBlockVars("searchresults", {
         TOPIC_FOLDER_IMG: "templates/Solaris/images/folder.gif",
         L_TOPIC_FOLDER_ALT: "No new posts",
@@ -587,12 +651,18 @@ async function handleUnanswered(c: any) {
         U_VIEW_FORUM: `/viewforum/${topic.forum_id}`,
         TOPIC_TITLE: topic.topic_title,
         U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
-        TOPIC_AUTHOR: topic.poster?.username ?? "",
+        TOPIC_AUTHOR: topic.poster
+          ? `<a href="/profile/${topic.topic_poster}">${topic.poster.username}</a>`
+          : "",
         REPLIES: "0",
         VIEWS: String(topic.topic_views ?? 0),
-        LAST_POST_TIME: "",
-        LAST_POST_AUTHOR: "",
-        LAST_POST_IMG: "",
+        LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
+        LAST_POST_AUTHOR: lastPostAuthor
+          ? `<a href="/profile/${lastPostAuthor.id}">${lastPostAuthor.username}</a>`
+          : "",
+        LAST_POST_IMG: lastPost
+          ? `<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
+          : "",
         NEWEST_POST_IMG: "",
         TOPIC_TYPE: "",
         GOTO_PAGE: "",
