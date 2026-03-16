@@ -1,8 +1,12 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
-import { loadSmilies, type Smiley } from "../lib/smilies.js";
+import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
+import { Template } from "../template/engine.js";
+import { join } from "node:path";
+
+const THEME_DIR = join(import.meta.dirname, "..", "..", "themes", "Solaris");
 
 const posting = new Hono();
 
@@ -77,6 +81,9 @@ posting.get("/posting", async (c) => {
   }
 
   const smilies = await loadSmilies(supabase);
+  const topicReviewHtml = topicId && (mode === "reply" || mode === "quote" || mode === "editpost")
+    ? await renderTopicReview(topicId, smilies)
+    : "";
   const html = renderPostingForm({
     user,
     mode,
@@ -88,6 +95,7 @@ posting.get("/posting", async (c) => {
     message,
     postTitle,
     smilies,
+    topicReviewHtml,
   });
 
   return c.html(html);
@@ -120,6 +128,7 @@ posting.post("/posting", async (c) => {
       .single();
 
     const previewHtml = parseBBCode(message);
+    const reviewHtml = topicId && mode !== "newtopic" ? await renderTopicReview(topicId, smilies) : "";
 
     const html = renderPostingForm({
       user,
@@ -133,6 +142,7 @@ posting.post("/posting", async (c) => {
       postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
       smilies,
       preview: previewHtml,
+      topicReviewHtml: reviewHtml,
     });
     return c.html(html);
   }
@@ -142,11 +152,12 @@ posting.post("/posting", async (c) => {
     const supabase = c.get("supabase");
     const smilies = await loadSmilies(supabase);
     const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+    const reviewHtml = topicId && mode !== "newtopic" ? await renderTopicReview(topicId, smilies) : "";
     return c.html(renderPostingForm({
       user, mode, forumId, topicId, postId,
       forumName: forum?.forum_name ?? "", subject, message,
       postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
-      smilies, error: "You must enter a message when posting.",
+      smilies, error: "You must enter a message when posting.", topicReviewHtml: reviewHtml,
     }));
   }
 
@@ -434,6 +445,7 @@ interface PostingFormOpts {
   smilies: Smiley[];
   preview?: string;
   error?: string;
+  topicReviewHtml?: string;
 }
 
 function renderPostingForm(opts: PostingFormOpts): string {
@@ -478,7 +490,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     MESSAGE: opts.message,
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: "",
-    TOPIC_REVIEW_BOX: "",
+    TOPIC_REVIEW_BOX: opts.topicReviewHtml ?? "",
     POLLBOX: "",
     S_SMILIES_COLSPAN: "5",
 
@@ -584,6 +596,55 @@ function renderPostingForm(opts: PostingFormOpts): string {
   }
 
   return renderPage(tpl);
+}
+
+async function renderTopicReview(topicId: number, smilies: Smiley[]): Promise<string> {
+  const adminDb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+  const { data: posts } = await adminDb
+    .from("posts")
+    .select("id, post_time, poster_id, posts_text(post_subject, post_text), profiles(username)")
+    .eq("topic_id", topicId)
+    .order("post_time", { ascending: false })
+    .limit(10);
+
+  if (!posts || posts.length === 0) return "";
+
+  const tpl = new Template(THEME_DIR);
+  tpl.loadFile("review", "posting_topic_review.tpl");
+
+  tpl.assignVars({
+    L_TOPIC_REVIEW: "Topic Review",
+    U_REVIEW_TOPIC: `/viewtopic/${topicId}`,
+    L_AUTHOR: "Author",
+    L_MESSAGE: "Message",
+    L_POSTED: "Posted",
+    L_POST_SUBJECT: "Post subject",
+  });
+
+  tpl.assignBlockVars("switch_inline_mode", {});
+
+  let rowIndex = 0;
+  for (const post of posts) {
+    const postText = post.posts_text as any;
+    const poster = post.profiles as any;
+    let messageHtml = parseBBCode(postText?.post_text ?? "");
+    messageHtml = replaceSmilies(messageHtml, smilies);
+
+    tpl.assignBlockVars("postrow", {
+      ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
+      POSTER_NAME: poster?.username ?? "Guest",
+      U_POST_ID: String(post.id),
+      MINI_POST_IMG: "templates/Solaris/images/icon_minipost.gif",
+      L_MINI_POST_ALT: "Post",
+      POST_DATE: formatPhpBBDate(post.post_time),
+      POST_SUBJECT: postText?.post_subject ?? "",
+      MESSAGE: messageHtml,
+    });
+    rowIndex++;
+  }
+
+  return tpl.render("review");
 }
 
 export default posting;
