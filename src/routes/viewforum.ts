@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, formatUsernameLink } from "../lib/render.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
 
 function getAdminDb() {
@@ -120,10 +120,7 @@ viewforum.get("/viewforum/:id", async (c) => {
       const profile = s.profiles as any;
       if (!seenBrowsing.has(profile.id)) {
         seenBrowsing.add(profile.id);
-        // Role colors: admin = red, mod = blue
-        let cssClass = "";
-        if (profile.user_level >= 1) cssClass = ' style="color:#AA0000; font-weight:bold"';
-        browsingUsers.push(`<a href="/profile/${profile.id}"${cssClass}>${profile.username}</a>`);
+        browsingUsers.push(formatUsernameLink(profile.id, profile.username, profile.user_level ?? 0));
       }
     } else {
       browsingGuests++;

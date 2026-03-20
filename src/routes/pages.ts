@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
 
 const pages = new Hono();
 
@@ -164,7 +164,7 @@ pages.get("/viewonline", async (c) => {
   const [{ data: sessions }, jumpboxHtml] = await Promise.all([
     adminDb
       .from("sessions")
-      .select("*, profiles(id, username)")
+      .select("*, profiles(id, username, user_level)")
       .gte("session_time", fiveMinAgo)
       .order("session_time", { ascending: false }),
     fetchAndRenderJumpbox(supabase),
@@ -200,9 +200,16 @@ pages.get("/viewonline", async (c) => {
   let rowIndex = 0;
   for (const s of registered) {
     const profile = s.profiles as any;
+    const userLevel = profile?.user_level ?? 0;
+    let styledUsername = profile?.username ?? "Unknown";
+    if (userLevel === 1) {
+      styledUsername = `<b style="color:${ADMIN_COLOR}">${styledUsername}</b>`;
+    } else if (userLevel === 2) {
+      styledUsername = `<b style="color:${MOD_COLOR}">${styledUsername}</b>`;
+    }
     tpl.assignBlockVars("reg_user_row", {
       ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
-      USERNAME: profile?.username ?? "Unknown",
+      USERNAME: styledUsername,
       U_USER_PROFILE: `/profile/${profile?.id ?? ""}`,
       LASTUPDATE: formatPhpBBDate(s.session_time),
       FORUM_LOCATION: s.session_page ?? "Index",

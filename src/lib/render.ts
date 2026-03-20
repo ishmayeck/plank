@@ -197,6 +197,29 @@ export async function fetchAndRenderJumpbox(
   return renderJumpbox(forums ?? [], cats ?? [], selectedForumId);
 }
 
+// ─── Role color constants (Solaris theme) ────────────────────
+// fontcolor3 = Admin (orange), fontcolor2 = Moderator (white)
+export const ADMIN_COLOR = "#FD4000";
+export const MOD_COLOR = "#FFFFFF";
+
+/**
+ * Format a username link with phpBB2-style role coloring.
+ * Admin: bold + orange (#FD4000), Moderator: bold + white (#FFFFFF).
+ */
+export function formatUsernameLink(
+  id: string,
+  username: string,
+  userLevel: number
+): string {
+  if (userLevel === 1) {
+    return `<a href="/profile/${id}" style="color:${ADMIN_COLOR}"><b>${username}</b></a>`;
+  }
+  if (userLevel === 2) {
+    return `<a href="/profile/${id}" style="color:${MOD_COLOR}"><b>${username}</b></a>`;
+  }
+  return `<a href="/profile/${id}">${username}</a>`;
+}
+
 /**
  * Render an error box using error_body.tpl, matching phpBB2's error display.
  * Returns an HTML string suitable for the {ERROR_BOX} template variable.

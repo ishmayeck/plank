@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, formatUsernameLink, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
 
 const index = new Hono();
 
@@ -52,10 +52,10 @@ index.get("/", async (c) => {
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const { data: activeSessions } = await adminDb
     .from("sessions")
-    .select("user_id, session_logged_in, profiles(id, username, user_allow_viewonline)")
+    .select("user_id, session_logged_in, profiles(id, username, user_allow_viewonline, user_level)")
     .gte("session_time", fiveMinAgo);
 
-  const onlineRegistered: { id: string; username: string }[] = [];
+  const onlineRegistered: { id: string; username: string; userLevel: number }[] = [];
   let hiddenCount = 0;
   let guestCount = 0;
 
@@ -66,7 +66,7 @@ index.get("/", async (c) => {
       if (!seenUsers.has(profile.id)) {
         seenUsers.add(profile.id);
         if (profile.user_allow_viewonline) {
-          onlineRegistered.push({ id: profile.id, username: profile.username });
+          onlineRegistered.push({ id: profile.id, username: profile.username, userLevel: profile.user_level ?? 0 });
         } else {
           hiddenCount++;
         }
@@ -85,7 +85,7 @@ index.get("/", async (c) => {
   const guestStr = guestCount === 1 ? `${guestCount} Guest` : `${guestCount} Guests`;
 
   const userListStr = onlineRegistered.length > 0
-    ? onlineRegistered.map((u) => `<a href="/profile/${u.id}">${u.username}</a>`).join(", ")
+    ? onlineRegistered.map((u) => formatUsernameLink(u.id, u.username, u.userLevel)).join(", ")
     : "None";
 
   const newestUserStr = newestUser
@@ -101,8 +101,8 @@ index.get("/", async (c) => {
     L_POSTS: "Posts",
     L_LASTPOST: "Last Post",
     L_WHO_IS_ONLINE: "Who is Online",
-    L_WHOSONLINE_ADMIN: "Admin",
-    L_WHOSONLINE_MOD: "Mod",
+    L_WHOSONLINE_ADMIN: `<span style="color:${ADMIN_COLOR}"><b>Administrator</b></span>`,
+    L_WHOSONLINE_MOD: `<span style="color:${MOD_COLOR}"><b>Moderator</b></span>`,
     L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
     L_NEW_POSTS: "New posts",
     L_NO_NEW_POSTS: "No new posts",
