@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
@@ -118,7 +118,7 @@ profile.get("/profile/:id", async (c) => {
     AIM_IMG: "",
     L_ICQ_NUMBER: "ICQ Number",
     ICQ_IMG: "",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   return c.html(renderPage(tpl));
@@ -367,7 +367,7 @@ profile.get("/memberlist", async (c) => {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   if (members) {

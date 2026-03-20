@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
 
 function getAdminDb() {
@@ -39,10 +39,9 @@ viewforum.get("/viewforum/:id", async (c) => {
   tpl.loadFile("body", "viewforum_body.tpl");
 
   // Get topic count and jumpbox data in parallel
-  const [{ count: totalTopics }, { data: jumpForums }, { data: jumpCats }] = await Promise.all([
+  const [{ count: totalTopics }, jumpboxHtml] = await Promise.all([
     supabase.from("topics").select("*", { count: "exact", head: true }).eq("forum_id", forumId),
-    supabase.from("forums").select("id, forum_name, cat_id").order("forum_order"),
-    supabase.from("categories").select("id, cat_title").order("cat_order"),
+    fetchAndRenderJumpbox(supabase, forumId),
   ]);
 
   const offset = (page - 1) * TOPICS_PER_PAGE;
@@ -176,7 +175,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: renderJumpbox(jumpForums ?? [], jumpCats ?? [], forumId),
+    JUMPBOX: jumpboxHtml,
     S_AUTH_LIST: buildAuthList(forum, user),
 
     // Folder icons

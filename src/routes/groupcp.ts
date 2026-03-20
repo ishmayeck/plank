@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, renderMessagePage } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { loginRedirect } from "./auth.js";
 
 const groupcp = new Hono();
@@ -26,6 +26,7 @@ groupcp.get("/groupcp", async (c) => {
   // Otherwise show the group list page
   if (!user) return c.redirect(loginRedirect(c));
 
+  const supabase = c.get("supabase");
   const adminDb = getAdminDb();
 
   // Get groups user belongs to
@@ -71,7 +72,7 @@ groupcp.get("/groupcp", async (c) => {
     S_USERGROUP_ACTION: "/groupcp",
     S_HIDDEN_FIELDS: "",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
 
     L_GROUP_MEMBERSHIP_DETAILS: "Group Membership Details",
     L_YOU_BELONG_GROUPS: "You belong to the following groups:",
@@ -138,6 +139,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   const user = c.get("user");
   if (!user) return c.redirect(loginRedirect(c));
 
+  const supabase = c.get("supabase");
   const adminDb = getAdminDb();
 
   const { data: group } = await adminDb
@@ -272,7 +274,7 @@ async function renderGroupInfo(c: any, groupId: number) {
     PAGINATION: "",
     PAGE_NUMBER: "",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
     PENDING_USER_BOX: "",
   });
 

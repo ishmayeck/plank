@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 
@@ -121,7 +121,7 @@ search.get("/search", async (c) => {
     L_SEARCH: "Search",
     S_HIDDEN_FIELDS: "",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   return c.html(renderPage(tpl));
@@ -185,6 +185,7 @@ async function handleTopicResults(
   searchTime: number
 ) {
   const user = c.get("user");
+  const supabase = c.get("supabase");
 
   // Build query to find matching topics
   let query = adminDb
@@ -284,7 +285,7 @@ async function handleTopicResults(
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   // Fetch last post info for each topic
@@ -347,6 +348,7 @@ async function handlePostResults(
   searchTime: number
 ) {
   const user = c.get("user");
+  const supabase = c.get("supabase");
 
   let query = adminDb
     .from("posts")
@@ -427,7 +429,7 @@ async function handlePostResults(
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   if (posts) {
@@ -522,7 +524,7 @@ async function handleNewPosts(c: any) {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   // Fetch last post info
@@ -576,6 +578,7 @@ async function handleNewPosts(c: any) {
 
 async function handleUnanswered(c: any) {
   const user = c.get("user");
+  const supabase = c.get("supabase");
   const page = parseInt(c.req.query("page") ?? "1", 10);
 
   const adminDb = createClient(
@@ -623,7 +626,7 @@ async function handleUnanswered(c: any) {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   // Fetch last post info for unanswered topics

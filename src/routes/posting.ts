@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { Template } from "../template/engine.js";
@@ -111,6 +111,7 @@ posting.get("/posting", async (c) => {
   const topicTypeToggle = (isFirstPost && user.userLevel >= 1)
     ? buildTopicTypeToggle(currentTopicType)
     : "";
+  const jumpboxHtml = await fetchAndRenderJumpbox(supabase);
   const html = renderPostingForm({
     user,
     mode,
@@ -125,6 +126,7 @@ posting.get("/posting", async (c) => {
     topicReviewHtml,
     topicTypeToggle,
     showPoll: mode === "newtopic",
+    jumpboxHtml,
   });
 
   return c.html(html);
@@ -230,6 +232,7 @@ posting.post("/posting", async (c) => {
       pollTitle: (body.poll_title as string) ?? "",
       pollOptions: pollOpts,
       pollLength: parseInt(body.poll_length as string, 10) || 0,
+      jumpboxHtml: await fetchAndRenderJumpbox(supabase),
     }));
   }
 
@@ -263,6 +266,7 @@ posting.post("/posting", async (c) => {
       pollTitle: (body.poll_title as string) ?? "",
       pollOptions: collectPollOptions(),
       pollLength: parseInt(body.poll_length as string, 10) || 0,
+      jumpboxHtml: await fetchAndRenderJumpbox(supabase),
     });
     return c.html(html);
   }
@@ -278,6 +282,7 @@ posting.post("/posting", async (c) => {
       forumName: forum?.forum_name ?? "", subject, message,
       postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
       smilies, error: "You must enter a message when posting.", topicReviewHtml: reviewHtml,
+      jumpboxHtml: await fetchAndRenderJumpbox(supabase),
     }));
   }
 
@@ -299,6 +304,7 @@ posting.post("/posting", async (c) => {
         forumName: forum?.forum_name ?? "", subject, message,
         postTitle: "Post a new topic",
         smilies, error: "Subject must not be empty.",
+        jumpboxHtml: await fetchAndRenderJumpbox(supabase),
       }));
     }
 
@@ -324,6 +330,7 @@ posting.post("/posting", async (c) => {
           topicTypeToggle: user.userLevel >= 1 ? buildTopicTypeToggle(topicType) : undefined,
           showPoll: true, pollTitle: pollTitleCheck, pollOptions: pollOpts,
           pollLength: parseInt(body.poll_length as string, 10) || 0,
+          jumpboxHtml: await fetchAndRenderJumpbox(supabase),
         }));
       }
     }
@@ -662,6 +669,7 @@ interface PostingFormOpts {
   pollOptions?: string[];
   pollLength?: number;
   showPoll?: boolean;
+  jumpboxHtml?: string;
 }
 
 function renderPostingForm(opts: PostingFormOpts): string {
@@ -705,7 +713,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     SUBJECT: opts.subject,
     MESSAGE: opts.message,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: opts.jumpboxHtml ?? "",
     TOPIC_REVIEW_BOX: opts.topicReviewHtml ?? "",
     POLLBOX: opts.showPoll ? renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? [""], opts.pollLength ?? 0) : "",
     S_SMILIES_COLSPAN: "4",

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 
 const modcp = new Hono();
@@ -116,7 +116,7 @@ modcp.get("/modcp", async (c) => {
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   if (topics) {

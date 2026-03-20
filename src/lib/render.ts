@@ -183,6 +183,21 @@ export function renderJumpbox(
 }
 
 /**
+ * Fetch forum/category lists and render the jumpbox in one call.
+ * Accepts any Supabase client and an optional selected forum ID.
+ */
+export async function fetchAndRenderJumpbox(
+  supabase: { from: (table: string) => any },
+  selectedForumId?: number
+): Promise<string> {
+  const [{ data: forums }, { data: cats }] = await Promise.all([
+    supabase.from("forums").select("id, forum_name, cat_id").order("forum_order"),
+    supabase.from("categories").select("id, cat_title").order("cat_order"),
+  ]);
+  return renderJumpbox(forums ?? [], cats ?? [], selectedForumId);
+}
+
+/**
  * Render an error box using error_body.tpl, matching phpBB2's error display.
  * Returns an HTML string suitable for the {ERROR_BOX} template variable.
  */

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, formatPhpBBDate } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 
 const pages = new Hono();
 
@@ -86,6 +86,7 @@ const faqData = [
 
 pages.get("/faq", async (c) => {
   const user = c.get("user");
+  const supabase = c.get("supabase");
 
   const tpl = createPageTemplate({
     user: user
@@ -102,7 +103,7 @@ pages.get("/faq", async (c) => {
     L_FAQ_TITLE: "Frequently Asked Questions",
     L_BACK_TO_TOP: "Back to top",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
 
   // The template uses <a name="X"> for anchors, which is deprecated in HTML5.
@@ -154,16 +155,20 @@ pages.get("/faq", async (c) => {
 
 pages.get("/viewonline", async (c) => {
   const user = c.get("user");
+  const supabase = c.get("supabase");
   const adminDb = getAdminDb();
 
   // Get recent sessions (last 5 minutes)
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-  const { data: sessions } = await adminDb
-    .from("sessions")
-    .select("*, profiles(id, username)")
-    .gte("session_time", fiveMinAgo)
-    .order("session_time", { ascending: false });
+  const [{ data: sessions }, jumpboxHtml] = await Promise.all([
+    adminDb
+      .from("sessions")
+      .select("*, profiles(id, username)")
+      .gte("session_time", fiveMinAgo)
+      .order("session_time", { ascending: false }),
+    fetchAndRenderJumpbox(supabase),
+  ]);
 
   const registered = (sessions ?? []).filter(
     (s: any) => s.session_logged_in && s.profiles
@@ -187,7 +192,7 @@ pages.get("/viewonline", async (c) => {
     L_FORUM_LOCATION: "Forum Location",
     L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: "",
+    JUMPBOX: jumpboxHtml,
     TOTAL_REGISTERED_USERS_ONLINE: `Registered Users Online: ${registered.length}`,
     TOTAL_GUEST_USERS_ONLINE: `Guest Users Online: ${guests.length}`,
   });

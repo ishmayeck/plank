@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
@@ -33,13 +33,12 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   }
 
   // Increment view count and fetch jumpbox data in parallel
-  const [, { data: jumpForums }, { data: jumpCats }] = await Promise.all([
+  const [, jumpboxHtml] = await Promise.all([
     supabase
       .from("topics")
       .update({ topic_views: topic.topic_views + 1 })
       .eq("id", topicId),
-    supabase.from("forums").select("id, forum_name, cat_id").order("forum_order"),
-    supabase.from("categories").select("id, cat_title").order("cat_order"),
+    fetchAndRenderJumpbox(supabase, topic.forum_id),
   ]);
 
   const tpl = createPageTemplate({
@@ -188,7 +187,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     S_WATCH_TOPIC: "",
     S_TOPIC_ADMIN: topicAdminHtml,
     S_AUTH_LIST: "",
-    JUMPBOX: renderJumpbox(jumpForums ?? [], jumpCats ?? [], topic.forum_id),
+    JUMPBOX: jumpboxHtml,
     POLL_DISPLAY: pollHtml,
   });
 
