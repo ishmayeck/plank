@@ -146,33 +146,71 @@ index.get("/", async (c) => {
     tpl.assignBlockVars("switch_user_logged_out.switch_allow_autologin", {});
   }
 
-  // Fetch last post info for forums that have posts
-  const forumLastPostIds = (forums ?? [])
-    .map((f: any) => f.forum_last_post_id)
-    .filter(Boolean);
+  // Fetch last post for each forum.
+  // Try the denormalized forum_last_post_id first; fall back to querying
+  // the most recent post per forum so the column works even when the
+  // denormalized field hasn't been maintained.
+  const forumIds = (forums ?? []).map((f: any) => f.id as number);
+  let lastPostMap: Record<number, { time: string; username: string; userId: string; topicId: number; postId: number }> = {};
 
-  let lastPostMap: Record<number, { time: string; username: string; userId: string; topicId: number }> = {};
-  if (forumLastPostIds.length > 0) {
-    const { data: lastPosts } = await supabase
-      .from("posts")
-      .select("id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
-      .in("id", forumLastPostIds);
+  if (forumIds.length > 0) {
+    // First try: batch-fetch by forum_last_post_id for forums that have it
+    const knownIds = (forums ?? [])
+      .map((f: any) => f.forum_last_post_id)
+      .filter((id: any) => id && id > 0);
 
-    if (lastPosts) {
-      for (const lp of lastPosts) {
-        const poster = lp.poster as any;
-        lastPostMap[lp.id] = {
-          time: lp.post_time,
+    let postById: Record<number, any> = {};
+    if (knownIds.length > 0) {
+      const { data: knownPosts } = await supabase
+        .from("posts")
+        .select("id, forum_id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
+        .in("id", knownIds);
+      if (knownPosts) {
+        for (const p of knownPosts) postById[p.id] = p;
+      }
+    }
+
+    // Build map from denormalized IDs
+    for (const f of forums ?? []) {
+      const p = f.forum_last_post_id ? postById[f.forum_last_post_id] : null;
+      if (p) {
+        const poster = p.poster as any;
+        lastPostMap[f.id] = {
+          time: p.post_time,
           username: poster?.username ?? "Guest",
-          userId: poster?.id ?? lp.poster_id,
-          topicId: lp.topic_id,
+          userId: poster?.id ?? p.poster_id,
+          topicId: p.topic_id,
+          postId: p.id,
         };
+      }
+    }
+
+    // Second pass: for any forum still missing, query the latest post directly
+    const missingForumIds = forumIds.filter((id) => !lastPostMap[id]);
+    if (missingForumIds.length > 0) {
+      for (const fid of missingForumIds) {
+        const { data: latest } = await supabase
+          .from("posts")
+          .select("id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
+          .eq("forum_id", fid)
+          .order("post_time", { ascending: false })
+          .limit(1)
+          .single();
+        if (latest) {
+          const poster = latest.poster as any;
+          lastPostMap[fid] = {
+            time: latest.post_time,
+            username: poster?.username ?? "Guest",
+            userId: poster?.id ?? latest.poster_id,
+            topicId: latest.topic_id,
+            postId: latest.id,
+          };
+        }
       }
     }
   }
 
   // Fetch moderators for all forums
-  const forumIds = (forums ?? []).map((f: any) => f.id);
   let forumModMap: Record<number, { id: string; username: string }[]> = {};
   if (forumIds.length > 0) {
     const { data: modEntries } = await supabase
@@ -212,12 +250,12 @@ index.get("/", async (c) => {
       const catForums = forums.filter((f: any) => f.cat_id === cat.id);
       for (const forum of catForums) {
         let lastPostText = "No posts";
-        if (forum.forum_last_post_id && lastPostMap[forum.forum_last_post_id]) {
-          const lp = lastPostMap[forum.forum_last_post_id];
+        if (lastPostMap[forum.id]) {
+          const lp = lastPostMap[forum.id];
           lastPostText =
             `${formatPhpBBDate(lp.time)}<br />` +
             `<a href="/profile/${lp.userId}">${lp.username}</a> ` +
-            `<a href="/viewtopic/${lp.topicId}#${forum.forum_last_post_id}">` +
+            `<a href="/viewtopic/${lp.topicId}#${lp.postId}">` +
             `<img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`;
         }
 
