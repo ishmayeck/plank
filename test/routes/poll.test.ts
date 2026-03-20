@@ -243,8 +243,10 @@ describe("Polls", () => {
         body: formData,
         headers: authHeaders(),
       });
-      expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe(`/viewtopic/${testTopicId}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your vote has been cast.");
+      expect(html).toContain(`/viewtopic/${testTopicId}`);
 
       // Verify vote was recorded
       const { data: vote } = await adminDb
@@ -309,7 +311,9 @@ describe("Polls", () => {
         body: formData,
         headers: auth2Headers(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your vote has been cast.");
 
       const { data: opt } = await adminDb
         .from("poll_options")

@@ -119,23 +119,25 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(302);
-      const location = res.headers.get("location")!;
-      expect(location).toMatch(/\/viewtopic\/\d+/);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your message has been entered successfully.");
+      expect(html).toContain("/viewtopic/");
 
-      // Extract topic ID for cleanup
-      const topicId = parseInt(location.match(/\/viewtopic\/(\d+)/)![1], 10);
-      createdTopicIds.push(topicId);
-
-      // Verify the topic was actually created
+      // Find the created topic by title
       const { data: topic } = await adminDb
         .from("topics")
         .select("*")
-        .eq("id", topicId)
+        .eq("topic_title", "Test New Topic")
+        .eq("topic_poster", testUserId)
+        .order("id", { ascending: false })
+        .limit(1)
         .single();
       expect(topic).not.toBeNull();
+      createdTopicIds.push(topic!.id);
       expect(topic!.topic_title).toBe("Test New Topic");
       expect(topic!.topic_poster).toBe(testUserId);
+      const topicId = topic!.id;
 
       // Verify the post text
       const { data: post } = await adminDb
@@ -252,9 +254,10 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(302);
-      const location = res.headers.get("location")!;
-      expect(location).toContain(`/viewtopic/${replyTopicId}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your message has been entered successfully.");
+      expect(html).toContain(`/viewtopic/${replyTopicId}`);
 
       // Verify reply count updated
       const { data: topic } = await adminDb
@@ -336,7 +339,9 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your message has been entered successfully.");
 
       // Verify the post was updated
       const { data: postText } = await adminDb
@@ -449,8 +454,10 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toContain(`/viewtopic/${topic!.id}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your message has been deleted successfully.");
+      expect(html).toContain(`/viewtopic/${topic!.id}`);
 
       // Verify post was deleted
       const { data: deletedPost } = await adminDb
@@ -508,8 +515,10 @@ describe("Posting", () => {
         headers: authHeaders(),
       });
 
-      expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toContain(`/viewforum/${testForumId}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Your message has been deleted successfully.");
+      expect(html).toContain(`/viewforum/${testForumId}`);
 
       // Verify topic was deleted
       const { data: deletedTopic } = await adminDb

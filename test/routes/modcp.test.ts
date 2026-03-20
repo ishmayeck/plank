@@ -224,7 +224,9 @@ describe("Moderation Control Panel", () => {
         body: formData,
         headers: modHeaders(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("The selected topics have been locked.");
 
       const { data: topic } = await adminDb
         .from("topics")
@@ -245,7 +247,9 @@ describe("Moderation Control Panel", () => {
         body: formData,
         headers: modHeaders(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("The selected topics have been unlocked.");
 
       const { data: topic } = await adminDb
         .from("topics")
@@ -283,7 +287,9 @@ describe("Moderation Control Panel", () => {
         body: formData,
         headers: modHeaders(),
       });
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("The selected topics have been successfully removed");
 
       const { data: topic } = await adminDb
         .from("topics")
@@ -396,9 +402,9 @@ describe("Moderation Control Panel", () => {
         body: formData,
         headers: modHeaders(),
       });
-      expect(res.status).toBe(302);
-      const location = res.headers.get("location")!;
-      expect(location).toMatch(/\/viewtopic\/\d+/);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("The selected topic has been split successfully.");
 
       // Verify original topic still has first post
       const { data: origPosts } = await adminDb
@@ -408,14 +414,14 @@ describe("Moderation Control Panel", () => {
       expect(origPosts!.length).toBe(1);
       expect(origPosts![0].id).toBe(testPostId);
 
-      // Verify new topic was created
-      const newTopicId = parseInt(location.split("/viewtopic/")[1], 10);
+      // Verify new topic was created (find by title)
       const { data: newTopic } = await adminDb
         .from("topics")
-        .select("topic_title")
-        .eq("id", newTopicId)
+        .select("id, topic_title")
+        .eq("topic_title", "Split Off Topic")
         .single();
       expect(newTopic!.topic_title).toBe("Split Off Topic");
+      const newTopicId = newTopic!.id;
 
       // Cleanup: move the post back
       await adminDb

@@ -222,7 +222,7 @@ export function renderMessagePage(opts: {
   redirectUrl?: string;
 }): string {
   const meta = opts.redirectUrl
-    ? `<base href="/"><meta http-equiv="refresh" content="5;url=${opts.redirectUrl}">`
+    ? `<base href="/"><meta http-equiv="refresh" content="3;url=${opts.redirectUrl}">`
     : '<base href="/">';
 
   const tpl = createPageTemplate(opts.ctx);

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
+import { renderMessagePage } from "../lib/render.js";
 import { loginRedirect } from "./auth.js";
 const poll = new Hono();
 
@@ -81,7 +82,15 @@ poll.post("/poll", async (c) => {
     .update({ vote_count: (currentOption?.vote_count ?? 0) + 1 })
     .eq("id", optionId);
 
-  return c.redirect(`/viewtopic/${topicId}`);
+  const viewUrl = `/viewtopic/${topicId}`;
+  return c.html(renderMessagePage({
+    ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
+    title: "Information",
+    messageHtml:
+      'Your vote has been cast.<br /><br />' +
+      `Click <a href="${viewUrl}">Here</a> to view the topic`,
+    redirectUrl: viewUrl,
+  }));
 });
 
 // ─── Poll Display Helper ─────────────────────────────────────

@@ -204,6 +204,10 @@ modcp.post("/modcp", async (c) => {
 
   const adminDb = getAdminDb();
 
+  const userCtx = { user: { id: user!.id, username: user!.username, unreadPms: user!.unreadPms, userLevel: user!.userLevel } };
+  const modcpUrl = `/modcp?f=${forumId}`;
+  const forumUrl = `/viewforum/${forumId}`;
+
   if (body.delete) {
     // Delete selected topics
     for (const tid of topicIds) {
@@ -211,7 +215,15 @@ modcp.post("/modcp", async (c) => {
     }
     // Update forum post/topic counts
     await recalcForumStats(adminDb, forumId);
-    return c.redirect(`/modcp?f=${forumId}`);
+    return c.html(renderMessagePage({
+      ctx: userCtx,
+      title: "Information",
+      messageHtml:
+        'The selected topics have been successfully removed from the database.<br /><br />' +
+        `Click <a href="${modcpUrl}">Here</a> to return to the Moderator Control Panel<br /><br />` +
+        `Click <a href="${forumUrl}">Here</a> to return to the forum`,
+      redirectUrl: modcpUrl,
+    }));
   }
 
   if (body.lock) {
@@ -219,7 +231,15 @@ modcp.post("/modcp", async (c) => {
       .from("topics")
       .update({ topic_status: 1 })
       .in("id", topicIds);
-    return c.redirect(`/modcp?f=${forumId}`);
+    return c.html(renderMessagePage({
+      ctx: userCtx,
+      title: "Information",
+      messageHtml:
+        'The selected topics have been locked.<br /><br />' +
+        `Click <a href="${modcpUrl}">Here</a> to return to the Moderator Control Panel<br /><br />` +
+        `Click <a href="${forumUrl}">Here</a> to return to the forum`,
+      redirectUrl: modcpUrl,
+    }));
   }
 
   if (body.unlock) {
@@ -227,7 +247,15 @@ modcp.post("/modcp", async (c) => {
       .from("topics")
       .update({ topic_status: 0 })
       .in("id", topicIds);
-    return c.redirect(`/modcp?f=${forumId}`);
+    return c.html(renderMessagePage({
+      ctx: userCtx,
+      title: "Information",
+      messageHtml:
+        'The selected topics have been unlocked.<br /><br />' +
+        `Click <a href="${modcpUrl}">Here</a> to return to the Moderator Control Panel<br /><br />` +
+        `Click <a href="${forumUrl}">Here</a> to return to the forum`,
+      redirectUrl: modcpUrl,
+    }));
   }
 
   if (body.move) {
@@ -626,7 +654,15 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
     await recalcForumStats(adminDb, newForumId);
   }
 
-  return c.redirect(`/viewtopic/${newTopic.id}`);
+  const splitViewUrl = `/viewtopic/${topicId}`;
+  return c.html(renderMessagePage({
+    ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
+    title: "Information",
+    messageHtml:
+      'The selected topic has been split successfully.<br /><br />' +
+      `Click <a href="${splitViewUrl}">Here</a> to return to the topic`,
+    redirectUrl: splitViewUrl,
+  }));
 }
 
 // ─── View IP ──────────────────────────────────────────────────

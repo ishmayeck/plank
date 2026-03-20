@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createClient } from "@supabase/supabase-js";
-import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate, fetchAndRenderJumpbox, renderMessagePage } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { Template } from "../template/engine.js";
@@ -442,7 +442,16 @@ posting.post("/posting", async (c) => {
       }
     }
 
-    return c.redirect(`/viewtopic/${topic.id}`);
+    const viewUrl = `/viewtopic/${topic.id}`;
+    return c.html(renderMessagePage({
+      ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
+      title: "Information",
+      messageHtml:
+        'Your message has been entered successfully.<br /><br />' +
+        `Click <a href="${viewUrl}">Here</a> to view your message<br /><br />` +
+        `Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`,
+      redirectUrl: viewUrl,
+    }));
 
   } else if (mode === "reply" || mode === "quote") {
     // Create reply post
@@ -509,14 +518,21 @@ posting.post("/posting", async (c) => {
       .update({ user_posts: userPosts ?? 0 })
       .eq("id", user.id);
 
-    // Redirect to last page of topic
     const postsPerPage = 15;
     const totalPages = Math.ceil((replyCount ?? 1) / postsPerPage);
-    const redirect = totalPages > 1
+    const viewUrl = totalPages > 1
       ? `/viewtopic/${topicId}?page=${totalPages}#${post.id}`
       : `/viewtopic/${topicId}#${post.id}`;
 
-    return c.redirect(redirect);
+    return c.html(renderMessagePage({
+      ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
+      title: "Information",
+      messageHtml:
+        'Your message has been entered successfully.<br /><br />' +
+        `Click <a href="${viewUrl}">Here</a> to view your message<br /><br />` +
+        `Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`,
+      redirectUrl: viewUrl,
+    }));
 
   } else if (mode === "editpost") {
     // Verify permission
@@ -576,7 +592,16 @@ posting.post("/posting", async (c) => {
       .eq("id", postId)
       .single();
 
-    return c.redirect(`/viewtopic/${post?.topic_id ?? topicId}#${postId}`);
+    const editViewUrl = `/viewtopic/${post?.topic_id ?? topicId}#${postId}`;
+    return c.html(renderMessagePage({
+      ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
+      title: "Information",
+      messageHtml:
+        'Your message has been entered successfully.<br /><br />' +
+        `Click <a href="${editViewUrl}">Here</a> to view your message<br /><br />` +
+        `Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`,
+      redirectUrl: editViewUrl,
+    }));
 
   } else if (mode === "delete") {
     const deletePostId = parseInt(c.req.query("p") ?? body.post_id as string, 10);
@@ -610,10 +635,20 @@ posting.post("/posting", async (c) => {
     const isFirstPost = post.topics?.topic_first_post_id === deletePostId;
     const redirectForumId = post.topics?.forum_id ?? post.forum_id;
 
+    const userCtx = { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } };
+
     if (isFirstPost) {
       // Delete entire topic (cascade deletes posts)
       await adminDb.from("topics").delete().eq("id", post.topic_id);
-      return c.redirect(`/viewforum/${redirectForumId}`);
+      const forumUrl = `/viewforum/${redirectForumId}`;
+      return c.html(renderMessagePage({
+        ctx: userCtx,
+        title: "Information",
+        messageHtml:
+          'Your message has been deleted successfully.<br /><br />' +
+          `Click <a href="${forumUrl}">Here</a> to return to the forum`,
+        redirectUrl: forumUrl,
+      }));
     } else {
       // Delete just this post
       await adminDb.from("posts").delete().eq("id", deletePostId);
@@ -641,7 +676,17 @@ posting.post("/posting", async (c) => {
         })
         .eq("id", post.topic_id);
 
-      return c.redirect(`/viewtopic/${post.topic_id}`);
+      const topicUrl = `/viewtopic/${post.topic_id}`;
+      const forumUrl = `/viewforum/${redirectForumId}`;
+      return c.html(renderMessagePage({
+        ctx: userCtx,
+        title: "Information",
+        messageHtml:
+          'Your message has been deleted successfully.<br /><br />' +
+          `Click <a href="${topicUrl}">Here</a> to return to the topic<br /><br />` +
+          `Click <a href="${forumUrl}">Here</a> to return to the forum`,
+        redirectUrl: topicUrl,
+      }));
     }
   }
 
