@@ -143,7 +143,7 @@ index.get("/", async (c) => {
   });
 
   if (!user) {
-    tpl.assignBlockVars("switch_allow_autologin", {});
+    tpl.assignBlockVars("switch_user_logged_out.switch_allow_autologin", {});
   }
 
   // Fetch last post info for forums that have posts
