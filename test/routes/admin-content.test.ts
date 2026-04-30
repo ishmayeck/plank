@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { loadSmilies, clearSmiliesCache } from "../../src/lib/smilies.js";
+import { loadWordCensors, clearCensorCache } from "../../src/lib/wordcensor.js";
 
 config({ path: ".env" });
 
@@ -315,6 +317,36 @@ describe("Admin - Users & Content", () => {
         .single();
       expect(smiley).toBeNull();
     });
+
+    it("invalidates the in-memory smilies cache when admin adds one", async () => {
+      // Prime the cache with whatever's currently in the DB.
+      clearSmiliesCache();
+      const before = await loadSmilies(adminDb);
+      const beforeCount = before.length;
+
+      // Add a smiley via the admin endpoint.
+      const formData = new FormData();
+      formData.append("add", "Add");
+      formData.append("code", ":cachetest:");
+      formData.append("smile_url", "images/smilies/cache.gif");
+      formData.append("emoticon", "Cache Test");
+      const res = await app.request("/admin/smilies", {
+        method: "POST",
+        body: formData,
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(302);
+
+      // The next loadSmilies should see the new entry without needing
+      // a manual cache clear or process restart.
+      const after = await loadSmilies(adminDb);
+      expect(after.length).toBe(beforeCount + 1);
+      expect(after.some((s) => s.code === ":cachetest:")).toBe(true);
+
+      // Cleanup
+      await adminDb.from("smilies").delete().eq("code", ":cachetest:");
+      clearSmiliesCache();
+    });
   });
 
   describe("word censor management", () => {
@@ -363,6 +395,30 @@ describe("Admin - Users & Content", () => {
         .eq("id", testWordId)
         .single();
       expect(word).toBeNull();
+    });
+
+    it("invalidates the in-memory word-censor cache when admin adds one", async () => {
+      clearCensorCache();
+      const before = await loadWordCensors(adminDb);
+      const beforeCount = before.length;
+
+      const formData = new FormData();
+      formData.append("add", "Add");
+      formData.append("word", "testcacheword");
+      formData.append("replacement", "[BAD]");
+      const res = await app.request("/admin/words", {
+        method: "POST",
+        body: formData,
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(302);
+
+      const after = await loadWordCensors(adminDb);
+      expect(after.length).toBe(beforeCount + 1);
+      expect(after.some((w) => w.word === "testcacheword")).toBe(true);
+
+      await adminDb.from("word_censors").delete().eq("word", "testcacheword");
+      clearCensorCache();
     });
   });
 });

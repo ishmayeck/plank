@@ -5,6 +5,8 @@ import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
 import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
+import { clearSmiliesCache } from "../lib/smilies.js";
+import { clearCensorCache } from "../lib/wordcensor.js";
 import path from "path";
 
 const THEME_DIR = path.join(process.cwd(), "themes", "Solaris");
@@ -1077,6 +1079,7 @@ admin.post("/admin/smilies", async (c) => {
     } else {
       await adminDb.from("smilies").insert(smileyData);
     }
+    clearSmiliesCache();
   }
 
   return c.redirect("/admin/smilies");
@@ -1149,6 +1152,7 @@ admin.post("/admin/words", async (c) => {
     } else {
       await adminDb.from("word_censors").insert(wordData);
     }
+    clearCensorCache();
   }
 
   // Handle delete via query param
@@ -1157,6 +1161,7 @@ admin.post("/admin/words", async (c) => {
       .from("word_censors")
       .delete()
       .eq("id", parseInt(body.delete_id as string, 10));
+    clearCensorCache();
   }
 
   return c.redirect("/admin/words");
@@ -1174,6 +1179,7 @@ admin.get("/admin/word-action", async (c) => {
   const adminDb = getSupabaseAdmin();
   if (mode === "delete") {
     await adminDb.from("word_censors").delete().eq("id", id);
+    clearCensorCache();
   }
   return c.redirect("/admin/words");
 });
@@ -1189,6 +1195,7 @@ admin.get("/admin/smiley-action", async (c) => {
   const adminDb = getSupabaseAdmin();
   if (mode === "delete") {
     await adminDb.from("smilies").delete().eq("id", id);
+    clearSmiliesCache();
   }
   return c.redirect("/admin/smilies");
 });
