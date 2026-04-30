@@ -188,68 +188,57 @@ async function handleTopicResults(
   const user = c.get("user");
   const supabase = c.get("supabase");
 
-  // Build query to find matching topics
-  let query = adminDb
-    .from("posts")
-    .select(
-      `topic_id,
-       posts_text!inner(post_subject, post_text, search_vector),
-       topics!posts_topic_id_fkey(
-         id, topic_title, topic_replies, topic_views, topic_poster,
-         topic_last_post_id, topic_type, topic_status,
-         forum_id, forums(forum_name),
-         poster:profiles!topics_topic_poster_fkey(username)
-       )`,
-      { count: "exact" }
-    );
-
-  // Full-text search
-  if (params.keywords) {
-    const tsQuery = params.keywords
-      .split(/\s+/)
-      .filter(Boolean)
-      .join(" & ");
-    query = query.textSearch("posts_text.search_vector", tsQuery);
-  }
-
-  // Author filter
+  // Author filter resolved first so we can pass the id into the RPC,
+  // or (for matching multiple users by wildcard) fall back to a
+  // post-filter on the result set.
+  let posterId: string | null = null;
   if (params.author) {
     const { data: authorProfile } = await adminDb
       .from("profiles")
       .select("id")
       .ilike("username", params.author.replace(/\*/g, "%"))
-      .single();
-    if (authorProfile) {
-      query = query.eq("poster_id", authorProfile.id);
-    }
+      .maybeSingle();
+    if (authorProfile) posterId = authorProfile.id;
   }
 
-  // Forum filter
-  if (forumId) {
-    query = query.eq("forum_id", forumId);
+  const since = searchTime > 0
+    ? new Date(Date.now() - searchTime * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  // search_topics RPC dedupes by topic_id and uses websearch_to_tsquery
+  // so user input like "foo & bar" or "(quoted)" doesn't blow up the
+  // FTS parser. Author filter is applied via a follow-up topic query
+  // when posterId resolved (the search_topics function doesn't take it).
+  const { data: matches } = await adminDb.rpc("search_topics", {
+    p_keywords: params.keywords ?? null,
+    p_forum_id: forumId || null,
+    p_since: since,
+    p_limit: RESULTS_PER_PAGE,
+    p_offset: offset,
+  });
+  const matchedTopicIds = (matches ?? []).map((m: any) => m.out_topic_id);
+  const count = matches && matches[0] ? Number(matches[0].out_total_count) : 0;
+
+  let topicsById: Record<number, any> = {};
+  if (matchedTopicIds.length > 0) {
+    let topicsQuery = adminDb
+      .from("topics")
+      .select(
+        `id, topic_title, topic_replies, topic_views, topic_poster,
+         topic_last_post_id, topic_type, topic_status, forum_id,
+         forums(forum_name),
+         poster:profiles!topics_topic_poster_fkey(username)`
+      )
+      .in("id", matchedTopicIds);
+    if (posterId) topicsQuery = topicsQuery.eq("topic_poster", posterId);
+    const { data: topicRows } = await topicsQuery;
+    for (const t of topicRows ?? []) topicsById[t.id] = t;
   }
 
-  // Time filter
-  if (searchTime > 0) {
-    const since = new Date(Date.now() - searchTime * 24 * 60 * 60 * 1000).toISOString();
-    query = query.gte("post_time", since);
-  }
-
-  const { data: posts, count } = await query
-    .order("post_time", { ascending: false })
-    .range(offset, offset + RESULTS_PER_PAGE - 1);
-
-  // Deduplicate by topic_id
-  const seenTopics = new Set<number>();
-  const uniqueTopics: any[] = [];
-  if (posts) {
-    for (const post of posts) {
-      if (!seenTopics.has(post.topic_id)) {
-        seenTopics.add(post.topic_id);
-        uniqueTopics.push(post);
-      }
-    }
-  }
+  const uniqueTopics: any[] = matchedTopicIds
+    .map((id: number) => topicsById[id])
+    .filter(Boolean)
+    .map((topic: any) => ({ topic_id: topic.id, topics: topic }));
 
   const tpl = createPageTemplate({
     user: user
@@ -362,11 +351,12 @@ async function handlePostResults(
     );
 
   if (params.keywords) {
-    const tsQuery = params.keywords
-      .split(/\s+/)
-      .filter(Boolean)
-      .join(" & ");
-    query = query.textSearch("posts_text.search_vector", tsQuery);
+    // websearch_to_tsquery accepts arbitrary user input (handles
+    // operators, quoted phrases, NOT) without throwing on syntax.
+    query = query.textSearch("posts_text.search_vector", params.keywords, {
+      type: "websearch",
+      config: "english",
+    });
   }
 
   if (params.author) {
@@ -374,7 +364,7 @@ async function handlePostResults(
       .from("profiles")
       .select("id")
       .ilike("username", params.author.replace(/\*/g, "%"))
-      .single();
+      .maybeSingle();
     if (authorProfile) {
       query = query.eq("poster_id", authorProfile.id);
     }

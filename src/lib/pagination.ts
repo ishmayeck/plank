@@ -81,8 +81,21 @@ export function generatePagination(
 }
 
 function pageUrl(baseUrl: string, page: number): string {
-  const sep = baseUrl.includes("?") ? "&" : "?";
-  return page === 1 ? baseUrl : `${baseUrl}${sep}page=${page}`;
+  // baseUrl may already carry an existing ?page= from another route.
+  // Use URLSearchParams so we replace, not duplicate.
+  const qIndex = baseUrl.indexOf("?");
+  if (qIndex === -1) {
+    return page === 1 ? baseUrl : `${baseUrl}?page=${page}`;
+  }
+  const path = baseUrl.slice(0, qIndex);
+  const params = new URLSearchParams(baseUrl.slice(qIndex + 1));
+  if (page === 1) {
+    params.delete("page");
+  } else {
+    params.set("page", String(page));
+  }
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
 }
 
 /**

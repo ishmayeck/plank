@@ -18,15 +18,29 @@ let testTopicId: number;
 let testPostId: number;
 let testPost2Id: number;
 
-async function cleanupUser(username: string) {
+async function deleteUserAndAllRefs(userId: string) {
+  // posts.poster_id and topics.topic_poster reference profiles(id)
+  // without ON DELETE CASCADE — clean them out by hand.
+  await adminDb.from("posts").delete().eq("poster_id", userId);
+  await adminDb.from("topics").delete().eq("topic_poster", userId);
+  await adminDb.from("privmsgs").delete().eq("privmsgs_from_userid", userId);
+  await adminDb.from("privmsgs").delete().eq("privmsgs_to_userid", userId);
+  await adminDb.auth.admin.deleteUser(userId);
+}
+
+async function cleanupUser(username: string, email?: string) {
   const { data } = await adminDb
     .from("profiles")
     .select("id")
     .eq("username", username)
-    .single();
-  if (data) {
-    await adminDb.from("topics").delete().eq("topic_poster", data.id);
-    await adminDb.auth.admin.deleteUser(data.id);
+    .maybeSingle();
+  if (data) await deleteUserAndAllRefs(data.id);
+  // supabase db reset doesn't always truncate auth.users — also wipe by email
+  if (email) {
+    const { data: list } = await adminDb.auth.admin.listUsers({ perPage: 1000 });
+    for (const u of list?.users ?? []) {
+      if (u.email === email) await deleteUserAndAllRefs(u.id);
+    }
   }
 }
 
@@ -36,11 +50,14 @@ async function createAndLogin(
   password: string,
   userLevel: number = 0
 ): Promise<{ userId: string; access: string; refresh: string }> {
-  const { data: authData } = await adminDb.auth.admin.createUser({
+  const { data: authData, error: authErr } = await adminDb.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
   });
+  if (authErr || !authData?.user) {
+    throw new Error(`createUser(${email}) failed: ${authErr?.message ?? "no user"}`);
+  }
   const userId = authData.user!.id;
   await adminDb.from("profiles").insert({ id: userId, username, user_level: userLevel });
 
@@ -70,8 +87,8 @@ beforeAll(async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  await cleanupUser("ModCPMod");
-  await cleanupUser("ModCPNormal");
+  await cleanupUser("ModCPMod", "modcpmod@plank.local");
+  await cleanupUser("ModCPNormal", "modcpnormal@plank.local");
 
   // Create mod user (user_level=2)
   const mod = await createAndLogin("ModCPMod", "modcpmod@plank.local", "testpass123", 2);

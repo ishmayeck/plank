@@ -35,6 +35,20 @@ describe("Pagination", () => {
     const result = generatePagination("/test", 100, 25, 4);
     expect(result.html.html).not.toContain("Next");
   });
+
+  it("preserves query string params and replaces existing page=", () => {
+    const result = generatePagination("/search?q=x&page=2", 100, 25, 3);
+    expect(result.html.html).toContain("/search?q=x&page=4");
+    expect(result.html.html).toContain("/search?q=x&page=2");
+    // Should not produce duplicate ?page= or &page=2&page=3
+    expect(result.html.html).not.toMatch(/page=\d+&page=/);
+  });
+
+  it("drops the page= param when linking to page 1 on a URL with query", () => {
+    const result = generatePagination("/search?q=x", 100, 25, 4);
+    // Page 1 link should be /search?q=x with no page param
+    expect(result.html.html).toContain('href="/search?q=x"');
+  });
 });
 
 describe("topicGotoPage", () => {

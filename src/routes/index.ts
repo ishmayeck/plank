@@ -91,6 +91,30 @@ index.get("/", async (c) => {
     ? `The newest registered user is <b><a href="/profile/${encodeURIComponent(newestUser.id)}">${escapeHtml(newestUser.username)}</a></b>`
     : "The newest registered user is <b>Nobody</b>";
 
+  // Track the all-time online record in the config table. Cheap when
+  // the current count doesn't beat the record (single read), and keeps
+  // the displayed "Most users ever online" actually meaningful.
+  const { data: recordRow } = await adminDb
+    .from("config")
+    .select("config_value")
+    .eq("config_name", "record_users_online")
+    .maybeSingle();
+  const { data: recordDateRow } = await adminDb
+    .from("config")
+    .select("config_value")
+    .eq("config_name", "record_users_online_date")
+    .maybeSingle();
+  let recordCount = parseInt(recordRow?.config_value ?? "0", 10) || 0;
+  let recordDate = recordDateRow?.config_value ?? new Date().toISOString();
+  if (totalOnline > recordCount) {
+    recordCount = totalOnline;
+    recordDate = new Date().toISOString();
+    await adminDb.from("config").upsert([
+      { config_name: "record_users_online", config_value: String(recordCount) },
+      { config_name: "record_users_online_date", config_value: recordDate },
+    ]);
+  }
+
   tpl.assignVars({
     // Index labels
     L_INDEX: "Index",
@@ -113,7 +137,7 @@ index.get("/", async (c) => {
     TOTAL_USERS: markup(`We have <b>${totalUsers ?? 0}</b> registered user${(totalUsers ?? 0) !== 1 ? "s" : ""}`),
     NEWEST_USER: markup(newestUserStr),
     TOTAL_USERS_ONLINE: markup(totalOnlineStr + regStr + hidStr + guestStr),
-    RECORD_USERS: markup(`Most users ever online was <b>${totalOnline}</b> on ${formatPhpBBDate(new Date())}`),
+    RECORD_USERS: markup(`Most users ever online was <b>${recordCount}</b> on ${formatPhpBBDate(recordDate)}`),
     LOGGED_IN_USER_LIST: markup(`Registered users: ${userListHtml}`),
     CURRENT_TIME: `The time now is ${formatPhpBBDate(new Date())}`,
 

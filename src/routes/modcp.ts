@@ -551,16 +551,25 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
     }
 
     if (selectedPostIds.length > 0) {
-      const splitPoint = Math.min(...selectedPostIds);
-      // Get all posts from the split point onward
-      const { data: postsAfter } = await adminDb
+      // "Split from selected post" — the user picks one post to mark
+      // as the new topic's start. Find its post_time, then move every
+      // post in the topic at or after that point.
+      const splitFromId = Math.min(...selectedPostIds);
+      const { data: pivot } = await adminDb
         .from("posts")
-        .select("id")
-        .eq("topic_id", topicId)
-        .gte("id", splitPoint)
-        .order("id");
-      if (postsAfter) {
-        postIdsToMove = postsAfter.map((p) => p.id);
+        .select("post_time")
+        .eq("id", splitFromId)
+        .maybeSingle();
+      if (pivot) {
+        const { data: postsAfter } = await adminDb
+          .from("posts")
+          .select("id")
+          .eq("topic_id", topicId)
+          .gte("post_time", pivot.post_time)
+          .order("post_time");
+        if (postsAfter) {
+          postIdsToMove = postsAfter.map((p) => p.id);
+        }
       }
     }
   }
