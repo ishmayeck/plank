@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { escapeRegex } from "../lib/escape.js";
+import type { TemplateValue } from "../lib/markup.js";
 
 /**
  * phpBB2-compatible template engine.
@@ -20,8 +21,8 @@ import { escapeRegex } from "../lib/escape.js";
 export class Template {
   private root: string;
   private templates: Map<string, string> = new Map();
-  private rootVars: Record<string, string> = {};
-  private blockData: Record<string, Record<string, string>[]> = {};
+  private rootVars: Record<string, TemplateValue> = {};
+  private blockData: Record<string, Record<string, TemplateValue>[]> = {};
   private substitutions: { pattern: RegExp; replacement: string }[] = [];
 
   constructor(root: string = ".") {
@@ -49,7 +50,7 @@ export class Template {
   }
 
   /** Assign root-level template variables. */
-  assignVars(vars: Record<string, string>): void {
+  assignVars(vars: Record<string, TemplateValue>): void {
     Object.assign(this.rootVars, vars);
   }
 
@@ -60,7 +61,7 @@ export class Template {
    * For nested blocks: assignBlockVars("parent.child", { ... })
    *   — the child row is added to the LAST iteration of the parent.
    */
-  assignBlockVars(blockname: string, vars: Record<string, string>): void {
+  assignBlockVars(blockname: string, vars: Record<string, TemplateValue>): void {
     if (blockname.includes(".")) {
       this.assignNestedBlockVars(blockname, vars);
     } else {
@@ -73,20 +74,20 @@ export class Template {
 
   private assignNestedBlockVars(
     blockname: string,
-    vars: Record<string, string>
+    vars: Record<string, TemplateValue>
   ): void {
     const parts = blockname.split(".");
     const childName = parts[parts.length - 1];
 
     // Walk down to the last iteration of each parent block
-    let current: Record<string, string>[] | undefined = this.blockData[parts[0]];
+    let current: Record<string, TemplateValue>[] | undefined = this.blockData[parts[0]];
     if (!current || current.length === 0) return;
 
-    let lastRow: Record<string, string> = current[current.length - 1];
+    let lastRow: Record<string, TemplateValue> = current[current.length - 1];
 
     for (let i = 1; i < parts.length - 1; i++) {
       const nested = (lastRow as any)[`__block_${parts[i]}`] as
-        | Record<string, string>[]
+        | Record<string, TemplateValue>[]
         | undefined;
       if (!nested || nested.length === 0) return;
       lastRow = nested[nested.length - 1];
@@ -215,7 +216,7 @@ export class Template {
 
   private renderNodes(
     nodes: TemplateNode[],
-    rootVars: Record<string, string>,
+    rootVars: Record<string, TemplateValue>,
     blockScope: BlockScope
   ): string {
     let output = "";
@@ -233,7 +234,7 @@ export class Template {
 
   private renderBlock(
     node: BlockNode,
-    rootVars: Record<string, string>,
+    rootVars: Record<string, TemplateValue>,
     parentScope: BlockScope
   ): string {
     const blockName = node.name;
@@ -268,7 +269,7 @@ export class Template {
   private resolveBlockData(
     blockName: string,
     parentScope: BlockScope
-  ): Record<string, string>[] | undefined {
+  ): Record<string, TemplateValue>[] | undefined {
     if (!parentScope.currentBlock) {
       // Top-level block — look in blockData
       return this.blockData[blockName];
@@ -279,22 +280,32 @@ export class Template {
     return (parentScope.currentRow as any)?.[key];
   }
 
+  /**
+   * Render a value into the output stream. For chunk 4a this just
+   * stringifies — both plain strings and MarkupString collapse to
+   * their raw form. Chunk 4b will flip strings to escape-by-default.
+   */
+  private renderValue(value: TemplateValue | undefined): string {
+    if (value === undefined) return "";
+    return typeof value === "string" ? value : value.html;
+  }
+
   private substituteVars(
     text: string,
-    rootVars: Record<string, string>,
+    rootVars: Record<string, TemplateValue>,
     scope: BlockScope
   ): string {
     // Replace namespaced variables first: {block.child.VAR} or {block.VAR}
     text = text.replace(
       /\{(([a-z0-9_-]+\.)+)([a-z0-9_-]+)\}/gi,
       (_match, namespace: string, _lastDot: string, varname: string) => {
-        return this.resolveNamespacedVar(namespace, varname, scope);
+        return this.renderValue(this.resolveNamespacedVar(namespace, varname, scope));
       }
     );
 
     // Replace root-level variables: {VAR}
     text = text.replace(/\{([a-z0-9_-]+)\}/gi, (_match, varname: string) => {
-      return rootVars[varname] ?? "";
+      return this.renderValue(rootVars[varname]);
     });
 
     return text;
@@ -304,7 +315,7 @@ export class Template {
     namespace: string,
     varname: string,
     scope: BlockScope
-  ): string {
+  ): TemplateValue | undefined {
     // namespace is like "catrow." or "catrow.forumrow."
     // Strip trailing dot and split
     const parts = namespace.slice(0, -1).split(".");
@@ -316,19 +327,19 @@ export class Template {
     const deepest = parts[parts.length - 1];
 
     if (scope.currentBlock === deepest) {
-      return scope.currentRow?.[varname] ?? "";
+      return scope.currentRow?.[varname];
     }
 
     // Check ancestors
     if (scope.ancestors) {
       for (const ancestor of scope.ancestors) {
         if (ancestor.name === deepest) {
-          return ancestor.row[varname] ?? "";
+          return ancestor.row[varname];
         }
       }
     }
 
-    return "";
+    return undefined;
   }
 }
 
@@ -349,6 +360,6 @@ interface BlockNode {
 
 interface BlockScope {
   currentBlock?: string;
-  currentRow?: Record<string, string>;
-  ancestors?: { name: string; row: Record<string, string> }[];
+  currentRow?: Record<string, TemplateValue>;
+  ancestors?: { name: string; row: Record<string, TemplateValue> }[];
 }
