@@ -310,3 +310,68 @@ phpBB2 used a dual system: `user_level` for global admin/mod gating, plus group-
 - [ ] Performance review: query optimization, caching where needed
 
 **Tests**: Notification emails send, read tracking works across sessions, IP enrichment resolves known datacenter ranges.
+
+---
+
+## Chunk 19: Code-Review Remediation ✅
+
+**Goal**: Address security, robustness, and code-quality issues surfaced
+in the April 2026 code review (see commits c35b516..71e2d3e).
+
+- [x] Shared `escapeHtml`/`escapeRegex` utilities; consolidate to
+  `getSupabaseAdmin()` singleton (eliminate ~30 inline createClient calls)
+- [x] `USER_LEVEL` constants and `isAdmin`/`isMod`/`isModOrAdmin`
+  predicates; fix `ADMIN_LINK` showing to mods
+- [x] Fix hardcoded `unreadPms: 0` in auth middleware; delete dead
+  `requireAuth`/`requireAdmin`; stop overwriting `session_start`; log
+  fire-and-forget upsert errors
+- [x] `MarkupString` brand for trusted HTML; flip the template engine to
+  HTML-escape plain strings by default; migrate every `assignVars` site
+- [x] CSRF protection: Hono origin/referer + per-session token; every
+  form injects via `formHiddenFields(c, ...)`
+- [x] Atomic counter maintenance via Postgres triggers (forum/topic/user
+  post counts, first/last_post_id pointers) and RPC for view/vote counts
+- [x] modcp split: switch from `Math.min(...id)` to `post_time` pivot;
+  redirect to source forum when original topic is emptied
+- [x] search FTS: `websearch_to_tsquery` (handles `&|!():`); dedup in SQL
+  via `search_topics` RPC; pagination URL builder preserves query params
+- [x] `RECORD_USERS` actually persists the all-time max
+- [x] `.single()` → `.maybeSingle()` audit (~30 sites)
+- [x] Cache invalidation hooks for smiley + word-censor admin mutations
+- [x] Code quality: `src/auth/cookies.ts`, `src/lib/labels.ts`,
+  `src/lib/avatar.ts`, `src/lib/config.ts`; XSS + CSRF regression tests;
+  test isolation via `cleanupTestUser`
+- [x] Username charset on registration: `[A-Za-z0-9._-]`
+
+---
+
+## Chunk 20: Hardening — Deferred from Chunk 19
+
+**Goal**: Items the code-review remediation deliberately deferred. Both
+need a deeper design pass than fits in a mechanical refactor.
+
+- [ ] **Rate limiting on auth + posting endpoints.** Throttle
+  `POST /login`, `POST /register`, `POST /posting` per IP and per
+  username/email to blunt brute-force credential stuffing and
+  posting-flood. Open questions: token-bucket vs sliding-window;
+  in-process map vs Postgres-backed (so it survives restarts and works
+  across multiple workers); how to expose the lockout state in the
+  login UI without leaking enumeration; how to bypass for tests.
+  Touches `src/routes/auth.ts`, `src/routes/posting.ts`, possibly a
+  new `src/lib/rate_limit.ts` and a `rate_limits` table.
+- [ ] **Honor user timezone preference end-to-end.** The profile form
+  already collects a `TIMEZONE_SELECT` value (`profiles.user_timezone`,
+  `profiles.user_dateformat`), but `formatPhpBBDate` in
+  `src/lib/render.ts` hardcodes UTC. Threading the user's zone through
+  every render site (post times, last-visit, RECORD_USERS date,
+  EDITED_MESSAGE, etc.) is mostly mechanical but touches every page.
+  Decision needed: pass `user.timezone` into `createPageTemplate` and
+  derive a per-request formatter, or attach to the Hono context and
+  let `formatPhpBBDate` read from there. Also: respect
+  `profiles.user_dateformat` (PHP date() syntax) — needs a
+  PHP-format-string interpreter or a documented subset.
+
+**Tests**: Rate limiter blocks the Nth attempt within window, recovers
+after the cooldown; per-IP and per-account independently. Date
+formatter renders the same UTC instant differently in `UTC`,
+`America/Los_Angeles`, and `Asia/Tokyo` profiles.
