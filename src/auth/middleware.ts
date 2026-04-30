@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { getCookie, setCookie } from "hono/cookie";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "../db/client.js";
 
@@ -22,6 +22,11 @@ declare module "hono" {
   }
 }
 
+// PM types matching the schema comment in the initial migration:
+// 0=not read, 1=read, 2=new (notification). 0 and 2 both count as unread.
+const PM_TYPE_UNREAD = 0;
+const PM_TYPE_NEW = 2;
+
 /**
  * Auth middleware: extracts session from cookies, attaches user + supabase client to context.
  */
@@ -29,7 +34,8 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
 
-  // Create a per-request Supabase client
+  // Create a per-request Supabase client. setSession() mutates client
+  // state, so this client cannot be shared across requests.
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   const accessToken = getCookie(c, "sb-access-token");
@@ -60,20 +66,29 @@ export const authMiddleware = createMiddleware(async (c, next) => {
         });
       }
 
-      // Fetch profile data
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("username, user_level, user_lastvisit, user_sig, user_attachsig")
-        .eq("id", data.session.user.id)
-        .single();
+      const adminDb = getSupabaseAdmin();
 
+      const [profileRes, unreadRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("username, user_level, user_lastvisit, user_sig, user_attachsig")
+          .eq("id", data.session.user.id)
+          .single(),
+        adminDb
+          .from("privmsgs")
+          .select("id", { count: "exact", head: true })
+          .eq("privmsgs_to_userid", data.session.user.id)
+          .in("privmsgs_type", [PM_TYPE_UNREAD, PM_TYPE_NEW]),
+      ]);
+
+      const profile = profileRes.data;
       if (profile) {
         user = {
           id: data.session.user.id,
           username: profile.username,
           email: data.session.user.email!,
           userLevel: profile.user_level,
-          unreadPms: 0, // TODO: query actual count
+          unreadPms: unreadRes.count ?? 0,
           lastVisit: profile.user_lastvisit,
           userSig: profile.user_sig ?? "",
           attachSig: profile.user_attachsig ?? false,
@@ -85,8 +100,9 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   c.set("user", user);
   c.set("supabase", supabase);
 
-  // Track session (fire-and-forget, don't block the request).
-  // Only track page-level GETs (not static assets, API calls, etc.)
+  // Track session for "who's online" — fire-and-forget, but log failures
+  // so a broken sessions table doesn't go silently undetected.
+  // Only track page-level GETs (skip static assets).
   const sessionPage = c.req.path;
   if (c.req.method === "GET" && !sessionPage.startsWith("/static/") && !sessionPage.startsWith("/templates/")) {
     const clientIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
@@ -103,39 +119,21 @@ export const authMiddleware = createMiddleware(async (c, next) => {
         maxAge: 60 * 60, // 1 hour
       });
     }
-    const now = new Date().toISOString();
+    // session_start is set by the column default on first insert and is
+    // never touched on update — omit it from the payload.
     adminDb.from("sessions").upsert({
       session_id: sessionId,
       user_id: user?.id ?? null,
       session_logged_in: !!user,
-      session_time: now,
-      session_start: now,
+      session_time: new Date().toISOString(),
       session_ip: clientIp,
       session_page: sessionPage,
-    }, { onConflict: "session_id" }).then(() => {});
+    }, { onConflict: "session_id" }).then(({ error: upsertError }) => {
+      if (upsertError) {
+        console.error("session upsert failed:", upsertError);
+      }
+    });
   }
 
-  await next();
-});
-
-/**
- * Middleware that requires authentication. Redirects to /login if not authenticated.
- */
-export const requireAuth = createMiddleware(async (c, next) => {
-  const user = c.get("user");
-  if (!user) {
-    return c.redirect("/login");
-  }
-  await next();
-});
-
-/**
- * Middleware that requires admin level. Returns 403 if not admin.
- */
-export const requireAdmin = createMiddleware(async (c, next) => {
-  const user = c.get("user");
-  if (!user || user.userLevel < 1) {
-    return c.text("Forbidden", 403);
-  }
   await next();
 });

@@ -201,4 +201,80 @@ describe("Authentication", () => {
       expect(html).toContain("General Discussion");
     });
   });
+
+  describe("unread PM counter in header", () => {
+    it("shows the actual unread count and refreshes when a PM is marked read", async () => {
+      const recipientPassword = "testpass-pm-counter";
+      const recipientId = await createTestUser(
+        "PMCounterRecipient",
+        "pm-counter-recipient@plank.local",
+        recipientPassword
+      );
+      const senderId = await createTestUser(
+        "PMCounterSender",
+        "pm-counter-sender@plank.local",
+        "anything"
+      );
+
+      // Log recipient in
+      const loginForm = new FormData();
+      loginForm.append("username", "PMCounterRecipient");
+      loginForm.append("password", recipientPassword);
+      const loginRes = await app.request("/login", { method: "POST", body: loginForm });
+      const cookies = loginRes.headers.getSetCookie();
+      const access = cookies
+        .find((c) => c.startsWith("sb-access-token="))!
+        .substring("sb-access-token=".length)
+        .split(";")[0];
+      const refresh = cookies
+        .find((c) => c.startsWith("sb-refresh-token="))!
+        .substring("sb-refresh-token=".length)
+        .split(";")[0];
+      const headers: HeadersInit = {
+        Cookie: `sb-access-token=${access}; sb-refresh-token=${refresh}`,
+      };
+
+      // No PMs yet — header should report none
+      const before = await (await app.request("/", { headers })).text();
+      expect(before).toContain("You have no new messages");
+
+      // Send two unread PMs to the recipient
+      const { data: pm1 } = await adminDb
+        .from("privmsgs")
+        .insert({
+          privmsgs_type: 0,
+          privmsgs_subject: "Hello",
+          privmsgs_from_userid: senderId,
+          privmsgs_to_userid: recipientId,
+        })
+        .select("id")
+        .single();
+      await adminDb.from("privmsgs_text").insert({
+        privmsgs_text_id: pm1!.id,
+        privmsgs_text: "First message",
+      });
+      const { data: pm2 } = await adminDb
+        .from("privmsgs")
+        .insert({
+          privmsgs_type: 2,
+          privmsgs_subject: "Hello again",
+          privmsgs_from_userid: senderId,
+          privmsgs_to_userid: recipientId,
+        })
+        .select("id")
+        .single();
+      await adminDb.from("privmsgs_text").insert({
+        privmsgs_text_id: pm2!.id,
+        privmsgs_text: "Second message",
+      });
+
+      const after = await (await app.request("/", { headers })).text();
+      expect(after).toContain("You have <b>2</b> new messages");
+
+      // Mark one read; counter drops to 1
+      await adminDb.from("privmsgs").update({ privmsgs_type: 1 }).eq("id", pm1!.id);
+      const afterRead = await (await app.request("/", { headers })).text();
+      expect(afterRead).toContain("You have <b>1</b> new message");
+    });
+  });
 });
