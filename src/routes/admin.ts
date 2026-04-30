@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { Template } from "../template/engine.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
 import path from "path";
 
@@ -238,21 +239,21 @@ admin.get("/admin/config", async (c) => {
     SCRIPT_PATH: cfg.script_path ?? "/",
     SITENAME: cfg.sitename ?? "Plank Forum",
     SITE_DESCRIPTION: cfg.site_desc ?? "",
-    S_DISABLE_BOARD_YES: cfg.board_disable === "1" ? 'checked="checked"' : "",
-    S_DISABLE_BOARD_NO: cfg.board_disable !== "1" ? 'checked="checked"' : "",
+    S_DISABLE_BOARD_YES: cfg.board_disable === "1" ? markup('checked="checked"') : "",
+    S_DISABLE_BOARD_NO: cfg.board_disable !== "1" ? markup('checked="checked"') : "",
     ACTIVATION_NONE: "0",
     ACTIVATION_USER: "1",
     ACTIVATION_ADMIN: "2",
-    ACTIVATION_NONE_CHECKED: (cfg.require_activation ?? "0") === "0" ? 'checked="checked"' : "",
-    ACTIVATION_USER_CHECKED: cfg.require_activation === "1" ? 'checked="checked"' : "",
-    ACTIVATION_ADMIN_CHECKED: cfg.require_activation === "2" ? 'checked="checked"' : "",
-    CONFIRM_ENABLE: (cfg.enable_confirm ?? "1") === "1" ? 'checked="checked"' : "",
-    CONFIRM_DISABLE: cfg.enable_confirm === "0" ? 'checked="checked"' : "",
-    ALLOW_AUTOLOGIN_YES: (cfg.allow_autologin ?? "1") === "1" ? 'checked="checked"' : "",
-    ALLOW_AUTOLOGIN_NO: cfg.allow_autologin === "0" ? 'checked="checked"' : "",
+    ACTIVATION_NONE_CHECKED: (cfg.require_activation ?? "0") === "0" ? markup('checked="checked"') : "",
+    ACTIVATION_USER_CHECKED: cfg.require_activation === "1" ? markup('checked="checked"') : "",
+    ACTIVATION_ADMIN_CHECKED: cfg.require_activation === "2" ? markup('checked="checked"') : "",
+    CONFIRM_ENABLE: (cfg.enable_confirm ?? "1") === "1" ? markup('checked="checked"') : "",
+    CONFIRM_DISABLE: cfg.enable_confirm === "0" ? markup('checked="checked"') : "",
+    ALLOW_AUTOLOGIN_YES: (cfg.allow_autologin ?? "1") === "1" ? markup('checked="checked"') : "",
+    ALLOW_AUTOLOGIN_NO: cfg.allow_autologin === "0" ? markup('checked="checked"') : "",
     AUTOLOGIN_TIME: cfg.max_autologin_time ?? "30",
-    BOARD_EMAIL_FORM_ENABLE: (cfg.board_email_form ?? "1") === "1" ? 'checked="checked"' : "",
-    BOARD_EMAIL_FORM_DISABLE: cfg.board_email_form === "0" ? 'checked="checked"' : "",
+    BOARD_EMAIL_FORM_ENABLE: (cfg.board_email_form ?? "1") === "1" ? markup('checked="checked"') : "",
+    BOARD_EMAIL_FORM_DISABLE: cfg.board_email_form === "0" ? markup('checked="checked"') : "",
     FLOOD_INTERVAL: cfg.flood_interval ?? "15",
     SEARCH_FLOOD_INTERVAL: cfg.search_flood_interval ?? "15",
     MAX_LOGIN_ATTEMPTS: cfg.max_login_attempts ?? "5",
@@ -260,55 +261,55 @@ admin.get("/admin/config", async (c) => {
     TOPICS_PER_PAGE: cfg.topics_per_page ?? "25",
     POSTS_PER_PAGE: cfg.posts_per_page ?? "15",
     HOT_TOPIC: cfg.hot_threshold ?? "25",
-    STYLE_SELECT: '<select name="default_style"><option value="Solaris" selected>Solaris</option></select>',
-    OVERRIDE_STYLE_YES: cfg.override_user_style === "1" ? 'checked="checked"' : "",
-    OVERRIDE_STYLE_NO: (cfg.override_user_style ?? "0") !== "1" ? 'checked="checked"' : "",
-    LANG_SELECT: '<select name="default_lang"><option value="english" selected>English</option></select>',
+    STYLE_SELECT: markup('<select name="default_style"><option value="Solaris" selected>Solaris</option></select>'),
+    OVERRIDE_STYLE_YES: cfg.override_user_style === "1" ? markup('checked="checked"') : "",
+    OVERRIDE_STYLE_NO: (cfg.override_user_style ?? "0") !== "1" ? markup('checked="checked"') : "",
+    LANG_SELECT: markup('<select name="default_lang"><option value="english" selected>English</option></select>'),
     DEFAULT_DATEFORMAT: cfg.default_dateformat ?? "D M d, Y g:i a",
-    TIMEZONE_SELECT: '<select name="board_timezone"><option value="0" selected>UTC</option></select>',
-    GZIP_YES: cfg.gzip_compress === "1" ? 'checked="checked"' : "",
-    GZIP_NO: (cfg.gzip_compress ?? "0") !== "1" ? 'checked="checked"' : "",
-    PRUNE_YES: cfg.prune_enable === "1" ? 'checked="checked"' : "",
-    PRUNE_NO: (cfg.prune_enable ?? "0") !== "1" ? 'checked="checked"' : "",
+    TIMEZONE_SELECT: markup('<select name="board_timezone"><option value="0" selected>UTC</option></select>'),
+    GZIP_YES: cfg.gzip_compress === "1" ? markup('checked="checked"') : "",
+    GZIP_NO: (cfg.gzip_compress ?? "0") !== "1" ? markup('checked="checked"') : "",
+    PRUNE_YES: cfg.prune_enable === "1" ? markup('checked="checked"') : "",
+    PRUNE_NO: (cfg.prune_enable ?? "0") !== "1" ? markup('checked="checked"') : "",
 
     // Cookie
     COOKIE_DOMAIN: cfg.cookie_domain ?? "",
     COOKIE_NAME: cfg.cookie_name ?? "plank",
     COOKIE_PATH: cfg.cookie_path ?? "/",
-    S_COOKIE_SECURE_ENABLED: cfg.cookie_secure === "1" ? 'checked="checked"' : "",
-    S_COOKIE_SECURE_DISABLED: (cfg.cookie_secure ?? "0") !== "1" ? 'checked="checked"' : "",
+    S_COOKIE_SECURE_ENABLED: cfg.cookie_secure === "1" ? markup('checked="checked"') : "",
+    S_COOKIE_SECURE_DISABLED: (cfg.cookie_secure ?? "0") !== "1" ? markup('checked="checked"') : "",
     SESSION_LENGTH: cfg.session_length ?? "3600",
 
     // PM
-    S_PRIVMSG_ENABLED: (cfg.privmsg_disable ?? "0") === "0" ? 'checked="checked"' : "",
-    S_PRIVMSG_DISABLED: cfg.privmsg_disable === "1" ? 'checked="checked"' : "",
+    S_PRIVMSG_ENABLED: (cfg.privmsg_disable ?? "0") === "0" ? markup('checked="checked"') : "",
+    S_PRIVMSG_DISABLED: cfg.privmsg_disable === "1" ? markup('checked="checked"') : "",
     INBOX_LIMIT: cfg.max_inbox_privmsgs ?? "50",
     SENTBOX_LIMIT: cfg.max_sentbox_privmsgs ?? "25",
     SAVEBOX_LIMIT: cfg.max_savebox_privmsgs ?? "50",
 
     // Abilities
     MAX_POLL_OPTIONS: cfg.max_poll_options ?? "10",
-    HTML_YES: cfg.allow_html === "1" ? 'checked="checked"' : "",
-    HTML_NO: (cfg.allow_html ?? "0") !== "1" ? 'checked="checked"' : "",
+    HTML_YES: cfg.allow_html === "1" ? markup('checked="checked"') : "",
+    HTML_NO: (cfg.allow_html ?? "0") !== "1" ? markup('checked="checked"') : "",
     HTML_TAGS: cfg.allow_html_tags ?? "",
-    BBCODE_YES: (cfg.allow_bbcode ?? "1") === "1" ? 'checked="checked"' : "",
-    BBCODE_NO: cfg.allow_bbcode === "0" ? 'checked="checked"' : "",
-    SMILE_YES: (cfg.allow_smilies ?? "1") === "1" ? 'checked="checked"' : "",
-    SMILE_NO: cfg.allow_smilies === "0" ? 'checked="checked"' : "",
+    BBCODE_YES: (cfg.allow_bbcode ?? "1") === "1" ? markup('checked="checked"') : "",
+    BBCODE_NO: cfg.allow_bbcode === "0" ? markup('checked="checked"') : "",
+    SMILE_YES: (cfg.allow_smilies ?? "1") === "1" ? markup('checked="checked"') : "",
+    SMILE_NO: cfg.allow_smilies === "0" ? markup('checked="checked"') : "",
     SMILIES_PATH: cfg.smilies_path ?? "images/smilies",
-    SIG_YES: (cfg.allow_sig ?? "1") === "1" ? 'checked="checked"' : "",
-    SIG_NO: cfg.allow_sig === "0" ? 'checked="checked"' : "",
+    SIG_YES: (cfg.allow_sig ?? "1") === "1" ? markup('checked="checked"') : "",
+    SIG_NO: cfg.allow_sig === "0" ? markup('checked="checked"') : "",
     SIG_SIZE: cfg.max_sig_chars ?? "255",
-    NAMECHANGE_YES: cfg.allow_namechange === "1" ? 'checked="checked"' : "",
-    NAMECHANGE_NO: (cfg.allow_namechange ?? "0") !== "1" ? 'checked="checked"' : "",
+    NAMECHANGE_YES: cfg.allow_namechange === "1" ? markup('checked="checked"') : "",
+    NAMECHANGE_NO: (cfg.allow_namechange ?? "0") !== "1" ? markup('checked="checked"') : "",
 
     // Avatars
-    AVATARS_LOCAL_YES: (cfg.allow_avatar_local ?? "1") === "1" ? 'checked="checked"' : "",
-    AVATARS_LOCAL_NO: cfg.allow_avatar_local === "0" ? 'checked="checked"' : "",
-    AVATARS_REMOTE_YES: (cfg.allow_avatar_remote ?? "1") === "1" ? 'checked="checked"' : "",
-    AVATARS_REMOTE_NO: cfg.allow_avatar_remote === "0" ? 'checked="checked"' : "",
-    AVATARS_UPLOAD_YES: (cfg.allow_avatar_upload ?? "1") === "1" ? 'checked="checked"' : "",
-    AVATARS_UPLOAD_NO: cfg.allow_avatar_upload === "0" ? 'checked="checked"' : "",
+    AVATARS_LOCAL_YES: (cfg.allow_avatar_local ?? "1") === "1" ? markup('checked="checked"') : "",
+    AVATARS_LOCAL_NO: cfg.allow_avatar_local === "0" ? markup('checked="checked"') : "",
+    AVATARS_REMOTE_YES: (cfg.allow_avatar_remote ?? "1") === "1" ? markup('checked="checked"') : "",
+    AVATARS_REMOTE_NO: cfg.allow_avatar_remote === "0" ? markup('checked="checked"') : "",
+    AVATARS_UPLOAD_YES: (cfg.allow_avatar_upload ?? "1") === "1" ? markup('checked="checked"') : "",
+    AVATARS_UPLOAD_NO: cfg.allow_avatar_upload === "0" ? markup('checked="checked"') : "",
     AVATAR_FILESIZE: cfg.avatar_filesize ?? "6291456",
     AVATAR_MAX_HEIGHT: cfg.avatar_max_height ?? "200",
     AVATAR_MAX_WIDTH: cfg.avatar_max_width ?? "200",
@@ -322,8 +323,8 @@ admin.get("/admin/config", async (c) => {
     // Email
     EMAIL_FROM: cfg.board_email ?? "admin@example.com",
     EMAIL_SIG: cfg.board_email_sig ?? "",
-    SMTP_YES: cfg.smtp_delivery === "1" ? 'checked="checked"' : "",
-    SMTP_NO: (cfg.smtp_delivery ?? "0") !== "1" ? 'checked="checked"' : "",
+    SMTP_YES: cfg.smtp_delivery === "1" ? markup('checked="checked"') : "",
+    SMTP_NO: (cfg.smtp_delivery ?? "0") !== "1" ? markup('checked="checked"') : "",
     SMTP_HOST: cfg.smtp_host ?? "",
     SMTP_USERNAME: cfg.smtp_username ?? "",
     SMTP_PASSWORD: cfg.smtp_password ?? "",
@@ -827,7 +828,7 @@ admin.get("/admin/bans", async (c) => {
     for (const ban of bans) {
       if (ban.ban_userid) {
         const username = (ban.profiles as any)?.username ?? ban.ban_userid;
-        userUnbanSelect += `<option value="${ban.id}">${escapeHtml(String(username))} (${ban.ban_reason ?? "no reason"})</option>`;
+        userUnbanSelect += `<option value="${ban.id}">${escapeHtml(String(username))} (${escapeHtml(ban.ban_reason ?? "no reason")})</option>`;
       }
       if (ban.ban_email) {
         emailUnbanSelect += `<option value="${ban.id}">${escapeHtml(ban.ban_email)}</option>`;
@@ -865,9 +866,9 @@ admin.get("/admin/bans", async (c) => {
     L_RESET: "Reset",
     S_HIDDEN_FIELDS: "",
     U_SEARCH_USER: "/search",
-    S_UNBAN_USERLIST_SELECT: userUnbanSelect,
-    S_UNBAN_IPLIST_SELECT: ipUnbanSelect,
-    S_UNBAN_EMAILLIST_SELECT: emailUnbanSelect,
+    S_UNBAN_USERLIST_SELECT: markup(userUnbanSelect),
+    S_UNBAN_IPLIST_SELECT: markup(ipUnbanSelect),
+    S_UNBAN_EMAILLIST_SELECT: markup(emailUnbanSelect),
   });
 
   return c.html(renderAdmin(tpl));

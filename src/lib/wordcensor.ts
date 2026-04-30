@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { escapeRegex } from "./escape.js";
+import { markup, isMarkup, type MarkupString } from "./markup.js";
 
 export interface WordCensor {
   word: string;
@@ -27,18 +28,32 @@ export async function loadWordCensors(
 /**
  * Apply word censoring to text.
  * Supports wildcards: * matches any characters.
+ *
+ * Plain string input → plain string output (will be HTML-escaped by
+ * the template engine). MarkupString input → MarkupString output, so
+ * pre-rendered HTML retains its trusted-markup flag.
  */
 export function applyCensors(
   text: string,
   censors: WordCensor[]
-): string {
+): string;
+export function applyCensors(
+  text: MarkupString,
+  censors: WordCensor[]
+): MarkupString;
+export function applyCensors(
+  text: string | MarkupString,
+  censors: WordCensor[]
+): string | MarkupString {
+  const wasMarkup = isMarkup(text);
+  let out = wasMarkup ? text.html : text;
   for (const censor of censors) {
     // Convert phpBB-style wildcards to regex
     const pattern = escapeRegex(censor.word).replace(/\\\*/g, "\\S*");
     const regex = new RegExp(`\\b${pattern}\\b`, "gi");
-    text = text.replace(regex, censor.replacement);
+    out = out.replace(regex, censor.replacement);
   }
-  return text;
+  return wasMarkup ? markup(out) : out;
 }
 
 export function clearCensorCache(): void {

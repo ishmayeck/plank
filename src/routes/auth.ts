@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
 import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 
 const auth = new Hono();
 
@@ -36,8 +38,8 @@ auth.get("/login", (c) => {
     U_SEND_PASSWORD: "/forgot-password",
     USERNAME: "",
     S_HIDDEN_FIELDS: redirect
-      ? `<input type="hidden" name="redirect" value="${redirect}" />`
-      : "",
+      ? markup(`<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />`)
+      : markup(""),
   });
   tpl.assignBlockVars("switch_allow_autologin", {});
 
@@ -268,7 +270,7 @@ function renderRegisterPage(
   tpl.assignVars({
     S_PROFILE_ACTION: "/register",
     S_FORM_ENCTYPE: "",
-    ERROR_BOX: error ? renderErrorBox(error) : "",
+    ERROR_BOX: error ? renderErrorBox(error) : markup(""),
     L_INDEX: "Index",
     U_INDEX: "/",
     L_REGISTRATION_INFO: "Registration Information",
@@ -307,7 +309,7 @@ function renderRegisterPage(
     L_BOARD_STYLE: "Board Style",
     L_TIMEZONE: "Timezone",
     L_DATE_FORMAT: "Date Format",
-    L_DATE_FORMAT_EXPLAIN: 'The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.',
+    L_DATE_FORMAT_EXPLAIN: markup('The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.'),
     L_CURRENT_PASSWORD: "Current Password",
     L_CONFIRM_PASSWORD_EXPLAIN: "You must confirm your current password if you wish to change it or alter your e-mail address",
     L_CONFIRM_CODE: "Confirmation code",
@@ -329,7 +331,7 @@ function renderRegisterPage(
     L_AVATAR_GALLERY: "Avatar gallery",
     L_SHOW_GALLERY: "Show gallery",
     HTML_STATUS: "",
-    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
+    BBCODE_STATUS: markup('<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>'),
     SMILIES_STATUS: "Smilies are ON",
 
     // Prefill values
@@ -349,27 +351,27 @@ function renderRegisterPage(
     SIGNATURE: "",
     AVATAR: "",
     AVATAR_SIZE: String(maxFilesize),
-    LANGUAGE_SELECT: '<option value="english" selected>English</option>',
-    STYLE_SELECT: '<option value="Solaris" selected>Solaris</option>',
-    TIMEZONE_SELECT: '<option value="0" selected>UTC</option>',
+    LANGUAGE_SELECT: markup('<option value="english" selected>English</option>'),
+    STYLE_SELECT: markup('<option value="Solaris" selected>Solaris</option>'),
+    TIMEZONE_SELECT: markup('<option value="0" selected>UTC</option>'),
     DATE_FORMAT: "D M d, Y g:i a",
     VIEW_EMAIL_YES: "",
-    VIEW_EMAIL_NO: 'checked="checked"',
+    VIEW_EMAIL_NO: markup('checked="checked"'),
     HIDE_USER_YES: "",
-    HIDE_USER_NO: 'checked="checked"',
-    NOTIFY_REPLY_YES: 'checked="checked"',
+    HIDE_USER_NO: markup('checked="checked"'),
+    NOTIFY_REPLY_YES: markup('checked="checked"'),
     NOTIFY_REPLY_NO: "",
-    NOTIFY_PM_YES: 'checked="checked"',
+    NOTIFY_PM_YES: markup('checked="checked"'),
     NOTIFY_PM_NO: "",
     POPUP_PM_YES: "",
-    POPUP_PM_NO: 'checked="checked"',
-    ALWAYS_ADD_SIGNATURE_YES: 'checked="checked"',
+    POPUP_PM_NO: markup('checked="checked"'),
+    ALWAYS_ADD_SIGNATURE_YES: markup('checked="checked"'),
     ALWAYS_ADD_SIGNATURE_NO: "",
-    ALWAYS_ALLOW_BBCODE_YES: 'checked="checked"',
+    ALWAYS_ALLOW_BBCODE_YES: markup('checked="checked"'),
     ALWAYS_ALLOW_BBCODE_NO: "",
     ALWAYS_ALLOW_HTML_YES: "",
-    ALWAYS_ALLOW_HTML_NO: 'checked="checked"',
-    ALWAYS_ALLOW_SMILIES_YES: 'checked="checked"',
+    ALWAYS_ALLOW_HTML_NO: markup('checked="checked"'),
+    ALWAYS_ALLOW_SMILIES_YES: markup('checked="checked"'),
     ALWAYS_ALLOW_SMILIES_NO: "",
     S_HIDDEN_FIELDS: "",
     CONFIRM_IMG: "",

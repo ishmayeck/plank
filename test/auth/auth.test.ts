@@ -204,21 +204,23 @@ describe("Authentication", () => {
 
   describe("unread PM counter in header", () => {
     it("shows the actual unread count and refreshes when a PM is marked read", async () => {
+      const suffix = Math.random().toString(36).slice(2, 8);
       const recipientPassword = "testpass-pm-counter";
+      const recipientName = `PMCounterRecipient_${suffix}`;
       const recipientId = await createTestUser(
-        "PMCounterRecipient",
-        "pm-counter-recipient@plank.local",
+        recipientName,
+        `pm-counter-recipient-${suffix}@plank.local`,
         recipientPassword
       );
       const senderId = await createTestUser(
-        "PMCounterSender",
-        "pm-counter-sender@plank.local",
+        `PMCounterSender_${suffix}`,
+        `pm-counter-sender-${suffix}@plank.local`,
         "anything"
       );
 
       // Log recipient in
       const loginForm = new FormData();
-      loginForm.append("username", "PMCounterRecipient");
+      loginForm.append("username", recipientName);
       loginForm.append("password", recipientPassword);
       const loginRes = await app.request("/login", { method: "POST", body: loginForm });
       const cookies = loginRes.headers.getSetCookie();

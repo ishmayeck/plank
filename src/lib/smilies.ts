@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { escapeRegex } from "./escape.js";
+import { escapeHtml, escapeRegex } from "./escape.js";
+import { markup, isMarkup, type MarkupString } from "./markup.js";
 
 export interface Smiley {
   code: string;
@@ -38,13 +39,16 @@ export async function loadSmilies(
 
 /**
  * Replace smiley codes in text with image tags.
- * Should be called on HTML output (after BBCode parsing).
+ * Accepts pre-rendered HTML (typically the output of parseBBCode) and
+ * returns MarkupString. The smiley URL and emoticon text are escaped
+ * before being embedded in the img tag's attributes.
  */
 export function replaceSmilies(
-  text: string,
+  text: string | MarkupString,
   smilies: Smiley[],
   imagePath: string = "images/smiles"
-): string {
+): MarkupString {
+  let out = isMarkup(text) ? text.html : text;
   // Sort by longest code first so :-) is matched before :)
   const sorted = [...smilies].sort(
     (a, b) => b.code.length - a.code.length
@@ -52,13 +56,13 @@ export function replaceSmilies(
 
   for (const smiley of sorted) {
     const regex = new RegExp(escapeRegex(smiley.code), "g");
-    text = text.replace(
-      regex,
-      `<img src="${imagePath}/${smiley.smile_url}" alt="${smiley.emoticon}" title="${smiley.emoticon}" border="0" />`
-    );
+    const safeUrl = escapeHtml(smiley.smile_url);
+    const safeEmoticon = escapeHtml(smiley.emoticon);
+    const replacement = `<img src="${escapeHtml(imagePath)}/${safeUrl}" alt="${safeEmoticon}" title="${safeEmoticon}" border="0" />`;
+    out = out.replace(regex, replacement);
   }
 
-  return text;
+  return markup(out);
 }
 
 /**

@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { createPageTemplate, renderPage, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { isAdmin, isModOrAdmin } from "../lib/userLevel.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 import { loginRedirect } from "./auth.js";
 
 const groupcp = new Hono();
@@ -89,12 +91,12 @@ groupcp.get("/groupcp", async (c) => {
       for (const mg of memberGroups!) {
         const g = mg.groups as any;
         if (g && !g.group_single_user) {
-          memberSelect += `<option value="${g.id}">${g.group_name}</option>`;
+          memberSelect += `<option value="${g.id}">${escapeHtml(g.group_name)}</option>`;
         }
       }
       memberSelect += "</select>";
 
-      tpl.assignVars({ GROUP_MEMBER_SELECT: memberSelect });
+      tpl.assignVars({ GROUP_MEMBER_SELECT: markup(memberSelect) });
       tpl.assignBlockVars("switch_groups_joined.switch_groups_member", {});
     }
 
@@ -103,12 +105,12 @@ groupcp.get("/groupcp", async (c) => {
       for (const pg of pendingGroups!) {
         const g = pg.groups as any;
         if (g) {
-          pendingSelect += `<option value="${g.id}">${g.group_name}</option>`;
+          pendingSelect += `<option value="${g.id}">${escapeHtml(g.group_name)}</option>`;
         }
       }
       pendingSelect += "</select>";
 
-      tpl.assignVars({ GROUP_PENDING_SELECT: pendingSelect });
+      tpl.assignVars({ GROUP_PENDING_SELECT: markup(pendingSelect) });
       tpl.assignBlockVars("switch_groups_joined.switch_groups_pending", {});
     }
   }
@@ -116,11 +118,11 @@ groupcp.get("/groupcp", async (c) => {
   if (hasRemaining) {
     let listSelect = '<select name="g">';
     for (const g of filteredAvailable) {
-      listSelect += `<option value="${g.id}">${g.group_name}</option>`;
+      listSelect += `<option value="${g.id}">${escapeHtml(g.group_name)}</option>`;
     }
     listSelect += "</select>";
 
-    tpl.assignVars({ GROUP_LIST_SELECT: listSelect });
+    tpl.assignVars({ GROUP_LIST_SELECT: markup(listSelect) });
     tpl.assignBlockVars("switch_groups_remaining", {});
   }
 
@@ -227,13 +229,13 @@ async function renderGroupInfo(c: any, groupId: number) {
     GROUP_DESC: group.group_description ?? "",
     GROUP_DETAILS: groupDetails,
     S_GROUPCP_ACTION: "/groupcp",
-    S_HIDDEN_FIELDS: `<input type="hidden" name="g" value="${groupId}" />`,
+    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="g" value="${groupId}" />`),
     S_GROUP_OPEN_TYPE: "0",
     S_GROUP_CLOSED_TYPE: "1",
     S_GROUP_HIDDEN_TYPE: "2",
-    S_GROUP_OPEN_CHECKED: group.group_type === 0 ? 'checked="checked"' : "",
-    S_GROUP_CLOSED_CHECKED: group.group_type === 1 ? 'checked="checked"' : "",
-    S_GROUP_HIDDEN_CHECKED: group.group_type === 2 ? 'checked="checked"' : "",
+    S_GROUP_OPEN_CHECKED: group.group_type === 0 ? markup('checked="checked"') : "",
+    S_GROUP_CLOSED_CHECKED: group.group_type === 1 ? markup('checked="checked"') : "",
+    S_GROUP_HIDDEN_CHECKED: group.group_type === 2 ? markup('checked="checked"') : "",
 
     // Moderator info
     L_GROUP_MODERATOR: "Group Moderator",
@@ -241,11 +243,11 @@ async function renderGroupInfo(c: any, groupId: number) {
     MOD_POSTS: String(group.moderator?.user_posts ?? 0),
     MOD_FROM: group.moderator?.user_from ?? "",
     MOD_PM_IMG: group.moderator
-      ? `<a href="/privmsg?mode=post&u=${group.moderator.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`
-      : "",
+      ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(group.moderator.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`)
+      : markup(""),
     MOD_EMAIL_IMG: "",
     MOD_WWW_IMG: "",
-    U_MOD_VIEWPROFILE: group.moderator ? `/profile/${group.moderator.id}` : "#",
+    U_MOD_VIEWPROFILE: group.moderator ? `/profile/${encodeURIComponent(group.moderator.id)}` : "#",
 
     // Members
     L_GROUP_MEMBERS: "Group Members",
@@ -296,19 +298,17 @@ async function renderGroupInfo(c: any, groupId: number) {
       const profile = m.profiles as any;
       if (!profile) continue;
 
-      const vars: Record<string, string> = {
+      tpl.assignBlockVars("member_row", {
         ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
         USERNAME: profile.username,
-        U_VIEWPROFILE: `/profile/${profile.id}`,
+        U_VIEWPROFILE: `/profile/${encodeURIComponent(profile.id)}`,
         POSTS: String(profile.user_posts ?? 0),
         FROM: profile.user_from ?? "",
-        PM_IMG: `<a href="/privmsg?mode=post&u=${profile.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`,
+        PM_IMG: markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(profile.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`),
         EMAIL_IMG: "",
         WWW_IMG: "",
         USER_ID: profile.id,
-      };
-
-      tpl.assignBlockVars("member_row", vars);
+      });
 
       if (isGroupMod || userIsAdmin) {
         tpl.assignBlockVars("member_row.switch_mod_option", {});
@@ -346,7 +346,7 @@ async function renderGroupInfo(c: any, groupId: number) {
       pendingTpl.assignBlockVars("pending_members_row", {
         ROW_CLASS: rowIdx % 2 === 0 ? "row1" : "row2",
         USERNAME: profile.username,
-        U_VIEWPROFILE: `/profile/${profile.id}`,
+        U_VIEWPROFILE: `/profile/${encodeURIComponent(profile.id)}`,
         POSTS: String(profile.user_posts ?? 0),
         FROM: profile.user_from ?? "",
         PM_IMG: "",
@@ -359,7 +359,7 @@ async function renderGroupInfo(c: any, groupId: number) {
 
     // Set the rendered pending box as the PENDING_USER_BOX var
     tpl.assignVars({
-      PENDING_USER_BOX: pendingTpl.render("pending"),
+      PENDING_USER_BOX: markup(pendingTpl.render("pending")),
     });
   }
 

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { renderMessagePage } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
+import { markup, type MarkupString } from "../lib/markup.js";
 import { loginRedirect } from "./auth.js";
 const poll = new Hono();
 
@@ -97,7 +98,7 @@ export async function renderPollForTopic(
   topicId: number,
   userId: string | null,
   showViewResults: boolean
-): Promise<string> {
+): Promise<MarkupString> {
   const adminDb = getSupabaseAdmin();
 
   const { data: pollQ } = await adminDb
@@ -106,7 +107,7 @@ export async function renderPollForTopic(
     .eq("topic_id", topicId)
     .single();
 
-  if (!pollQ) return "";
+  if (!pollQ) return markup("");
 
   // Get options
   const { data: options } = await adminDb
@@ -115,7 +116,7 @@ export async function renderPollForTopic(
     .eq("poll_id", pollQ.id)
     .order("option_order");
 
-  if (!options || options.length === 0) return "";
+  if (!options || options.length === 0) return markup("");
 
   // Check if user has voted
   let hasVoted = false;
@@ -142,9 +143,9 @@ export async function renderPollForTopic(
   const showResults = hasVoted || isExpired || !userId;
 
   if (showResults || showViewResults) {
-    return renderPollResults(pollQ, options, topicId);
+    return markup(renderPollResults(pollQ, options, topicId));
   } else {
-    return renderPollBallot(pollQ, options, topicId);
+    return markup(renderPollBallot(pollQ, options, topicId));
   }
 }
 

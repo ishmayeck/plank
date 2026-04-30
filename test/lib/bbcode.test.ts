@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { parseBBCode } from "../../src/lib/bbcode.js";
+import { parseBBCode as parseBBCodeMarkup } from "../../src/lib/bbcode.js";
+
+// parseBBCode returns a MarkupString; tests assert against the raw HTML.
+const parseBBCode = (text: string) => parseBBCodeMarkup(text).html;
 
 describe("BBCode Parser", () => {
   describe("text formatting", () => {

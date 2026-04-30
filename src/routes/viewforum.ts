@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, formatUsernameLink } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
 
 const TOPICS_PER_PAGE = 25;
@@ -97,7 +99,11 @@ viewforum.get("/viewforum/:id", async (c) => {
   }
 
   const moderatorsHtml = moderatorNames.length > 0
-    ? moderatorNames.map((m) => `<a href="/profile/${m.id}">${m.username}</a>`).join(", ")
+    ? markup(
+        moderatorNames
+          .map((m) => `<a href="/profile/${encodeURIComponent(m.id)}">${escapeHtml(m.username)}</a>`)
+          .join(", ")
+      )
     : "None";
 
   // Users browsing this forum (active sessions on this page in last 5 minutes)
@@ -117,7 +123,7 @@ viewforum.get("/viewforum/:id", async (c) => {
       const profile = s.profiles as any;
       if (!seenBrowsing.has(profile.id)) {
         seenBrowsing.add(profile.id);
-        browsingUsers.push(formatUsernameLink(profile.id, profile.username, profile.user_level ?? 0));
+        browsingUsers.push(formatUsernameLink(profile.id, profile.username, profile.user_level ?? 0).html);
       }
     } else {
       browsingGuests++;
@@ -157,15 +163,16 @@ viewforum.get("/viewforum/:id", async (c) => {
     POST_IMG: "templates/Solaris/images/lang_english/new_topic.gif",
     L_MODERATOR: "Moderator",
     MODERATORS: moderatorsHtml,
-    LOGGED_IN_USER_LIST: browsingStr,
+    LOGGED_IN_USER_LIST: markup(browsingStr),
     L_MARK_TOPICS_READ: "Mark all topics read",
     U_MARK_READ: `/viewforum/${forumId}?mark=topics`,
     L_DISPLAY_TOPICS: "Display topics from previous",
     L_NO_TOPICS: "There are no topics in this forum.",
     L_GO: "Go",
     S_POST_DAYS_ACTION: `/viewforum/${forumId}`,
-    S_SELECT_TOPIC_DAYS:
-      '<select name="topicdays"><option value="0" selected>All Topics</option><option value="1">1 Day</option><option value="7">7 Days</option><option value="14">2 Weeks</option><option value="30">1 Month</option></select>',
+    S_SELECT_TOPIC_DAYS: markup(
+      '<select name="topicdays"><option value="0" selected>All Topics</option><option value="1">1 Day</option><option value="7">7 Days</option><option value="14">2 Weeks</option><option value="30">1 Month</option></select>'
+    ),
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
@@ -198,11 +205,11 @@ viewforum.get("/viewforum/:id", async (c) => {
         : "";
       const lastPostPoster = lastPost?.poster as any;
       const lastPostAuthor = lastPostPoster
-        ? `<a href="/profile/${lastPostPoster.id}">${lastPostPoster.username}</a>`
-        : "";
+        ? markup(`<a href="/profile/${encodeURIComponent(lastPostPoster.id)}">${escapeHtml(lastPostPoster.username)}</a>`)
+        : markup("");
       const lastPostImg = lastPost
-        ? `<a href="/viewtopic/${topic.id}#${topic.topic_last_post_id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="View latest post" title="View latest post" border="0" /></a>`
-        : "";
+        ? markup(`<a href="/viewtopic/${topic.id}#${topic.topic_last_post_id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="View latest post" title="View latest post" border="0" /></a>`)
+        : markup("");
 
       // Determine folder icon and topic type prefix
       let folderImg = "templates/Solaris/images/folder.gif";
@@ -244,7 +251,7 @@ viewforum.get("/viewforum/:id", async (c) => {
         TOPIC_FOLDER_IMG: folderImg,
         L_TOPIC_FOLDER_ALT: folderAlt,
         NEWEST_POST_IMG: "",
-        TOPIC_TYPE: topicType,
+        TOPIC_TYPE: markup(topicType),
         U_VIEW_TOPIC: `/viewtopic/${topicLinkId}`,
         TOPIC_TITLE: topic.topic_title,
         GOTO_PAGE: topicGotoPage(
@@ -277,7 +284,7 @@ function canDoAction(authLevel: number, user: any): boolean {
   return false;
 }
 
-function buildAuthList(forum: any, user: any): string {
+function buildAuthList(forum: any, user: any) {
   const lines: string[] = [];
   const can = (yes: boolean) => yes ? "<b>can</b>" : "<b>cannot</b>";
 
@@ -297,7 +304,7 @@ function buildAuthList(forum: any, user: any): string {
     lines.push(`You ${can(true)} <a href="/modcp?f=${forum.id}">moderate this forum</a>`);
   }
 
-  return lines.join("<br />");
+  return markup(lines.join("<br />"));
 }
 
 export default viewforum;

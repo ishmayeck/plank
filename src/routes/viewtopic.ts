@@ -5,6 +5,8 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
 
 const POSTS_PER_PAGE = 15;
@@ -123,16 +125,17 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const isTopicMod = isModOrAdmin(user);
 
   // Build topic moderation controls for moderators/admins
-  let topicAdminHtml = "";
+  let topicAdminHtml = markup("");
   if (isTopicMod) {
     const lockImg = isLocked
       ? `<a href="/modcp?mode=unlock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_unlock.gif" alt="Unlock Topic" title="Unlock Topic" border="0" /></a>`
       : `<a href="/modcp?mode=lock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_lock.gif" alt="Lock Topic" title="Lock Topic" border="0" /></a>`;
-    topicAdminHtml =
+    topicAdminHtml = markup(
       `<a href="/modcp?mode=delete&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_delete.gif" alt="Delete Topic" title="Delete Topic" border="0" /></a>&nbsp;` +
       `<a href="/modcp?mode=move&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_move.gif" alt="Move Topic" title="Move Topic" border="0" /></a>&nbsp;` +
       `${lockImg}&nbsp;` +
-      `<a href="/modcp?mode=split&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_split.gif" alt="Split Topic" title="Split Topic" border="0" /></a>`;
+      `<a href="/modcp?mode=split&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_split.gif" alt="Split Topic" title="Split Topic" border="0" /></a>`
+    );
   }
 
   tpl.assignVars({
@@ -179,10 +182,12 @@ viewtopic.get("/viewtopic/:id", async (c) => {
 
     // Post display form
     S_POST_DAYS_ACTION: `/viewtopic/${topicId}`,
-    S_SELECT_POST_DAYS:
-      '<select name="postdays"><option value="0" selected>All Posts</option><option value="1">1 Day</option><option value="7">7 Days</option></select>',
-    S_SELECT_POST_ORDER:
-      '<select name="postorder"><option value="asc" selected>Oldest First</option><option value="desc">Newest First</option></select>',
+    S_SELECT_POST_DAYS: markup(
+      '<select name="postdays"><option value="0" selected>All Posts</option><option value="1">1 Day</option><option value="7">7 Days</option></select>'
+    ),
+    S_SELECT_POST_ORDER: markup(
+      '<select name="postorder"><option value="asc" selected>Oldest First</option><option value="desc">Newest First</option></select>'
+    ),
 
     // Topic admin
     S_WATCH_TOPIC: "",
@@ -201,7 +206,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
       const rowClass = rowIndex % 2 === 0 ? "row1" : "row2";
 
       // Render post content: always parse from BBCode source
-      let messageHtml = postText?.post_text ? parseBBCode(postText.post_text) : "";
+      let messageHtml = postText?.post_text ? parseBBCode(postText.post_text) : markup("");
 
       // Apply smilies and word censoring to rendered HTML
       if (post.enable_smilies) {
@@ -210,9 +215,9 @@ viewtopic.get("/viewtopic/:id", async (c) => {
       messageHtml = applyCensors(messageHtml, censors);
 
       // Signature
-      let signature = "";
+      let signature = markup("");
       if (post.enable_sig && poster?.user_sig) {
-        signature = `<br />_________________<br />${parseBBCode(poster.user_sig)}`;
+        signature = markup(`<br />_________________<br />${parseBBCode(poster.user_sig).html}`);
       }
 
       // Rank
@@ -220,31 +225,30 @@ viewtopic.get("/viewtopic/:id", async (c) => {
 
       // Avatar
       const avatar = poster?.user_avatar
-        ? `<br /><img src="${poster.user_avatar}" alt="" /><br />`
-        : "";
+        ? markup(`<br /><img src="${escapeHtml(poster.user_avatar)}" alt="" /><br />`)
+        : markup("");
 
       // Action buttons (based on permissions)
       const isOwnPost = user && poster?.id === user.id;
       const isMod = isModOrAdmin(user);
 
-      const quoteImg =
-        user && !isLocked
-          ? `<a href="/posting?mode=quote&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_quote.gif" alt="Reply with quote" border="0" /></a>`
-          : "";
-      const editImg =
-        isOwnPost || isMod
-          ? `<a href="/posting?mode=editpost&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_edit.gif" alt="Edit" border="0" /></a>`
-          : "";
-      const deleteImg =
-        isOwnPost || isMod
-          ? `<a href="/posting?mode=delete&p=${post.id}"><img src="templates/Solaris/images/icon_delete.gif" alt="Delete" border="0" /></a>`
-          : "";
+      const quoteImg = user && !isLocked
+        ? markup(`<a href="/posting?mode=quote&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_quote.gif" alt="Reply with quote" border="0" /></a>`)
+        : markup("");
+      const editImg = isOwnPost || isMod
+        ? markup(`<a href="/posting?mode=editpost&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_edit.gif" alt="Edit" border="0" /></a>`)
+        : markup("");
+      const deleteImg = isOwnPost || isMod
+        ? markup(`<a href="/posting?mode=delete&p=${post.id}"><img src="templates/Solaris/images/icon_delete.gif" alt="Delete" border="0" /></a>`)
+        : markup("");
 
       tpl.assignBlockVars("postrow", {
         ROW_CLASS: rowClass,
         POSTER_NAME: poster?.username ?? post.post_username ?? "Guest",
         POSTER_RANK: rank.title,
-        RANK_IMAGE: rank.image ? `<img src="${rank.image}" alt="${rank.title}" /><br />` : "",
+        RANK_IMAGE: rank.image
+          ? markup(`<img src="${escapeHtml(rank.image)}" alt="${escapeHtml(rank.title)}" /><br />`)
+          : markup(""),
         POSTER_AVATAR: avatar,
         POSTER_JOINED: `Joined: ${formatPhpBBDate(poster?.user_regdate ?? post.post_time, true)}`,
         POSTER_POSTS: `Posts: ${poster?.user_posts ?? 0}`,
@@ -258,18 +262,18 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         MESSAGE: messageHtml,
         SIGNATURE: signature,
         EDITED_MESSAGE: post.post_edit_count > 0
-          ? `<br /><br />Last edited by ${poster?.username ?? "Unknown"} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`
-          : "",
+          ? markup(`<br /><br />Last edited by ${escapeHtml(poster?.username ?? "Unknown")} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`)
+          : markup(""),
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,
         DELETE_IMG: deleteImg,
         IP_IMG: isMod
-          ? `<a href="/modcp/ip?p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_ip.gif" alt="IP" border="0" /></a>`
-          : "",
-        PROFILE_IMG: `<a href="/profile/${poster?.id ?? ""}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`,
+          ? markup(`<a href="/modcp/ip?p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_ip.gif" alt="IP" border="0" /></a>`)
+          : markup(""),
+        PROFILE_IMG: markup(`<a href="/profile/${encodeURIComponent(poster?.id ?? "")}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`),
         PM_IMG: poster
-          ? `<a href="/privmsg?mode=post&u=${poster.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`
-          : "",
+          ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(poster.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`)
+          : markup(""),
         EMAIL_IMG: "",
         WWW_IMG: poster?.user_from
           ? ""

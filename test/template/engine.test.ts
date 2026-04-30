@@ -347,13 +347,13 @@ describe("phpBB2 Template Engine", () => {
       expect(result).toContain("</table>");
     });
 
-    it("handles special characters in variable values", () => {
+    it("escapes HTML in plain-string variable values by default", () => {
       const tpl = new Template();
       tpl.loadString("body", "{MSG}");
       tpl.assignVars({ MSG: '<script>alert("xss")</script>' });
-      // The engine does raw substitution like phpBB2 did.
-      // Escaping is the caller's responsibility.
-      expect(tpl.render("body")).toBe('<script>alert("xss")</script>');
+      expect(tpl.render("body")).toBe(
+        "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;"
+      );
     });
 
     it("handles root-level vars mixed with block vars in same template", () => {

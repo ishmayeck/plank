@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { createPageTemplate, renderPage, formatPhpBBDate, formatUsernameLink, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 
 const index = new Hono();
 
@@ -81,12 +83,12 @@ index.get("/", async (c) => {
   const hidStr = `${hiddenCount} Hidden and `;
   const guestStr = guestCount === 1 ? `${guestCount} Guest` : `${guestCount} Guests`;
 
-  const userListStr = onlineRegistered.length > 0
-    ? onlineRegistered.map((u) => formatUsernameLink(u.id, u.username, u.userLevel)).join(", ")
+  const userListHtml = onlineRegistered.length > 0
+    ? onlineRegistered.map((u) => formatUsernameLink(u.id, u.username, u.userLevel).html).join(", ")
     : "None";
 
   const newestUserStr = newestUser
-    ? `The newest registered user is <b><a href="/profile/${newestUser.id}">${newestUser.username}</a></b>`
+    ? `The newest registered user is <b><a href="/profile/${encodeURIComponent(newestUser.id)}">${escapeHtml(newestUser.username)}</a></b>`
     : "The newest registered user is <b>Nobody</b>";
 
   tpl.assignVars({
@@ -98,8 +100,8 @@ index.get("/", async (c) => {
     L_POSTS: "Posts",
     L_LASTPOST: "Last Post",
     L_WHO_IS_ONLINE: "Who is Online",
-    L_WHOSONLINE_ADMIN: `<span style="color:${ADMIN_COLOR}"><b>Administrator</b></span>`,
-    L_WHOSONLINE_MOD: `<span style="color:${MOD_COLOR}"><b>Moderator</b></span>`,
+    L_WHOSONLINE_ADMIN: markup(`<span style="color:${ADMIN_COLOR}"><b>Administrator</b></span>`),
+    L_WHOSONLINE_MOD: markup(`<span style="color:${MOD_COLOR}"><b>Moderator</b></span>`),
     L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
     L_NEW_POSTS: "New posts",
     L_NO_NEW_POSTS: "No new posts",
@@ -107,12 +109,12 @@ index.get("/", async (c) => {
     L_MARK_FORUMS_READ: "Mark all forums read",
 
     // Stats
-    TOTAL_POSTS: `Our users have posted a total of <b>${totalPosts ?? 0}</b> article${(totalPosts ?? 0) !== 1 ? "s" : ""}`,
-    TOTAL_USERS: `We have <b>${totalUsers ?? 0}</b> registered user${(totalUsers ?? 0) !== 1 ? "s" : ""}`,
-    NEWEST_USER: newestUserStr,
-    TOTAL_USERS_ONLINE: totalOnlineStr + regStr + hidStr + guestStr,
-    RECORD_USERS: `Most users ever online was <b>${totalOnline}</b> on ${formatPhpBBDate(new Date())}`,
-    LOGGED_IN_USER_LIST: `Registered users: ${userListStr}`,
+    TOTAL_POSTS: markup(`Our users have posted a total of <b>${totalPosts ?? 0}</b> article${(totalPosts ?? 0) !== 1 ? "s" : ""}`),
+    TOTAL_USERS: markup(`We have <b>${totalUsers ?? 0}</b> registered user${(totalUsers ?? 0) !== 1 ? "s" : ""}`),
+    NEWEST_USER: markup(newestUserStr),
+    TOTAL_USERS_ONLINE: markup(totalOnlineStr + regStr + hidStr + guestStr),
+    RECORD_USERS: markup(`Most users ever online was <b>${totalOnline}</b> on ${formatPhpBBDate(new Date())}`),
+    LOGGED_IN_USER_LIST: markup(`Registered users: ${userListHtml}`),
     CURRENT_TIME: `The time now is ${formatPhpBBDate(new Date())}`,
 
     // Links
@@ -246,15 +248,24 @@ index.get("/", async (c) => {
 
       const catForums = forums.filter((f: any) => f.cat_id === cat.id);
       for (const forum of catForums) {
-        let lastPostText = "No posts";
+        let lastPostText = markup("No posts");
         if (lastPostMap[forum.id]) {
           const lp = lastPostMap[forum.id];
-          lastPostText =
+          lastPostText = markup(
             `${formatPhpBBDate(lp.time)}<br />` +
-            `<a href="/profile/${lp.userId}">${lp.username}</a> ` +
+            `<a href="/profile/${encodeURIComponent(lp.userId)}">${escapeHtml(lp.username)}</a> ` +
             `<a href="/viewtopic/${lp.topicId}#${lp.postId}">` +
-            `<img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`;
+            `<img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
+          );
         }
+
+        const moderatorMarkup = (forumModMap[forum.id] ?? []).length > 0
+          ? markup(
+              forumModMap[forum.id]
+                .map((m: any) => `<a href="/profile/${encodeURIComponent(m.id)}">${escapeHtml(m.username)}</a>`)
+                .join(", ")
+            )
+          : "None";
 
         tpl.assignBlockVars("catrow.forumrow", {
           FORUM_FOLDER_IMG: "templates/Solaris/images/folder.gif",
@@ -262,9 +273,7 @@ index.get("/", async (c) => {
           FORUM_NAME: forum.forum_name,
           FORUM_DESC: forum.forum_desc ?? "",
           L_MODERATOR: "Moderator:",
-          MODERATORS: (forumModMap[forum.id] ?? []).length > 0
-            ? forumModMap[forum.id].map((m: any) => `<a href="/profile/${m.id}">${m.username}</a>`).join(", ")
-            : "None",
+          MODERATORS: moderatorMarkup,
           TOPICS: String(forum.forum_topics ?? 0),
           POSTS: String(forum.forum_posts ?? 0),
           LAST_POST: lastPostText,

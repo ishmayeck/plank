@@ -1,4 +1,5 @@
 import { escapeHtml } from "./escape.js";
+import { markup, type MarkupString } from "./markup.js";
 
 /**
  * phpBB2-compatible BBCode parser.
@@ -8,8 +9,11 @@ import { escapeHtml } from "./escape.js";
  * [code], [quote], [quote="X"], [list], [list=X], [*]
  *
  * Also auto-links bare URLs and converts newlines to <br />.
+ *
+ * Returns a MarkupString — the engine will render it without further
+ * escaping.
  */
-export function parseBBCode(text: string): string {
+export function parseBBCode(text: string): MarkupString {
   // Step 1: Extract code blocks to protect them from processing
   const codeBlocks: string[] = [];
   text = text.replace(
@@ -125,7 +129,7 @@ export function parseBBCode(text: string): string {
     return `</span><table width="90%" cellspacing="1" cellpadding="3" border="0" align="center"><tr> \t  <td><span class="genmed"><b>Code:</b></span></td>\t</tr>\t<tr>\t  <td class="code">${code}</td>\t</tr></table><span class="postbody">`;
   });
 
-  return text;
+  return markup(text);
 }
 
 function parseListItems(content: string): string {

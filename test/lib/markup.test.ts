@@ -25,8 +25,8 @@ describe("isMarkup", () => {
   });
 });
 
-describe("Template substitution accepts markup() values (chunk 4a)", () => {
-  it("renders a MarkupString verbatim, identical to a raw string", () => {
+describe("Template substitution escapes plain strings, passes MarkupString through", () => {
+  it("escapes a plain string and renders MarkupString verbatim", () => {
     const tplPlain = new Template();
     tplPlain.loadString("body", "x{V}y");
     tplPlain.assignVars({ V: "<b>raw</b>" });
@@ -35,7 +35,7 @@ describe("Template substitution accepts markup() values (chunk 4a)", () => {
     tplMarkup.loadString("body", "x{V}y");
     tplMarkup.assignVars({ V: markup("<b>raw</b>") });
 
-    expect(tplMarkup.render("body")).toBe(tplPlain.render("body"));
+    expect(tplPlain.render("body")).toBe("x&lt;b&gt;raw&lt;/b&gt;y");
     expect(tplMarkup.render("body")).toBe("x<b>raw</b>y");
   });
 
@@ -48,5 +48,15 @@ describe("Template substitution accepts markup() values (chunk 4a)", () => {
     tpl.assignBlockVars("row", { HTML: markup("<i>1</i>") });
     tpl.assignBlockVars("row", { HTML: markup("<i>2</i>") });
     expect(tpl.render("body")).toBe("[<i>1</i>][<i>2</i>]");
+  });
+
+  it("escapes plain strings inside block iterations", () => {
+    const tpl = new Template();
+    tpl.loadString(
+      "body",
+      "<!-- BEGIN row -->[{row.NAME}]<!-- END row -->"
+    );
+    tpl.assignBlockVars("row", { NAME: "<script>" });
+    expect(tpl.render("body")).toBe("[&lt;script&gt;]");
   });
 });

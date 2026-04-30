@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import { Template } from "../template/engine.js";
 import { USER_LEVEL, isAdmin } from "./userLevel.js";
+import { escapeHtml } from "./escape.js";
+import { markup, type MarkupString } from "./markup.js";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -63,7 +65,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
     SITENAME: "Plank Forum",
     PAGE_TITLE: ctx.pageTitle ?? "Index",
     T_HEAD_STYLESHEET: "Solaris.css",
-    META: '<base href="/">',
+    META: markup('<base href="/">'),
     NAV_LINKS: "",
 
     // Navigation URLs
@@ -89,7 +91,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
     // PM info
     PRIVATE_MESSAGE_INFO: isLoggedIn
       ? ctx.user!.unreadPms > 0
-        ? `You have <b>${ctx.user!.unreadPms}</b> new message${ctx.user!.unreadPms !== 1 ? "s" : ""}`
+        ? markup(`You have <b>${ctx.user!.unreadPms}</b> new message${ctx.user!.unreadPms !== 1 ? "s" : ""}`)
         : "You have no new messages"
       : "",
     PRIVATE_MESSAGE_NEW_FLAG: isLoggedIn && ctx.user!.unreadPms > 0 ? "1" : "0",
@@ -104,7 +106,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
     // Footer
     PHPBB_VERSION: "",
     ADMIN_LINK: isAdmin(ctx.user)
-      ? '<a href="/admin">Go to Administration Panel</a><br /><br />'
+      ? markup('<a href="/admin">Go to Administration Panel</a><br /><br />')
       : "",
     TRANSLATION_INFO: "",
   });
@@ -137,13 +139,14 @@ export function renderPage(
 
 /**
  * Render a forum jumpbox (dropdown selector) using jumpbox.tpl.
- * Returns HTML string for the {JUMPBOX} template variable.
+ * Returns a MarkupString suitable for the {JUMPBOX} template variable.
+ * Forum/category names are HTML-escaped before being concatenated.
  */
 export function renderJumpbox(
   forums: { id: number; forum_name: string; cat_id?: number }[],
   categories?: { id: number; cat_title: string }[],
   selectedForumId?: number
-): string {
+): MarkupString {
   const tpl = new Template(THEME_DIR);
   tpl.loadFile("jumpbox", "jumpbox.tpl");
 
@@ -159,28 +162,28 @@ export function renderJumpbox(
       const catForums = forumsByCat.get(cat.id) ?? [];
       if (catForums.length === 0) continue;
       options += `<option value="-1">&nbsp;</option>`;
-      options += `<option value="-1">${cat.cat_title}</option>`;
+      options += `<option value="-1">${escapeHtml(cat.cat_title)}</option>`;
       options += `<option value="-1">----------------</option>`;
       for (const f of catForums) {
         const sel = f.id === selectedForumId ? " selected" : "";
-        options += `<option value="${f.id}"${sel}>&nbsp;&nbsp;${f.forum_name}</option>`;
+        options += `<option value="${f.id}"${sel}>&nbsp;&nbsp;${escapeHtml(f.forum_name)}</option>`;
       }
     }
   } else {
     for (const f of forums) {
       const sel = f.id === selectedForumId ? " selected" : "";
-      options += `<option value="${f.id}"${sel}>${f.forum_name}</option>`;
+      options += `<option value="${f.id}"${sel}>${escapeHtml(f.forum_name)}</option>`;
     }
   }
 
   tpl.assignVars({
     S_JUMPBOX_ACTION: "#",
     L_JUMP_TO: "Jump to",
-    S_JUMPBOX_SELECT: `<select name="f" onchange="if(this.options[this.selectedIndex].value != -1){ window.location='/viewforum/'+this.options[this.selectedIndex].value; }">${options}</select>`,
+    S_JUMPBOX_SELECT: markup(`<select name="f" onchange="if(this.options[this.selectedIndex].value != -1){ window.location='/viewforum/'+this.options[this.selectedIndex].value; }">${options}</select>`),
     L_GO: "Go",
   });
 
-  return tpl.render("jumpbox");
+  return markup(tpl.render("jumpbox"));
 }
 
 /**
@@ -190,7 +193,7 @@ export function renderJumpbox(
 export async function fetchAndRenderJumpbox(
   supabase: { from: (table: string) => any },
   selectedForumId?: number
-): Promise<string> {
+): Promise<MarkupString> {
   const [{ data: forums }, { data: cats }] = await Promise.all([
     supabase.from("forums").select("id, forum_name, cat_id").order("forum_order"),
     supabase.from("categories").select("id, cat_title").order("cat_order"),
@@ -206,38 +209,43 @@ export const MOD_COLOR = "#FFFFFF";
 /**
  * Format a username link with phpBB2-style role coloring.
  * Admin: bold + orange (#FD4000), Moderator: bold + white (#FFFFFF).
+ * The username is HTML-escaped before being embedded.
  */
 export function formatUsernameLink(
   id: string,
   username: string,
   userLevel: number
-): string {
+): MarkupString {
+  const safeId = encodeURIComponent(id);
+  const safeName = escapeHtml(username);
   if (userLevel === USER_LEVEL.ADMIN) {
-    return `<a href="/profile/${id}" style="color:${ADMIN_COLOR}"><b>${username}</b></a>`;
+    return markup(`<a href="/profile/${safeId}" style="color:${ADMIN_COLOR}"><b>${safeName}</b></a>`);
   }
   if (userLevel === USER_LEVEL.MOD) {
-    return `<a href="/profile/${id}" style="color:${MOD_COLOR}"><b>${username}</b></a>`;
+    return markup(`<a href="/profile/${safeId}" style="color:${MOD_COLOR}"><b>${safeName}</b></a>`);
   }
-  return `<a href="/profile/${id}">${username}</a>`;
+  return markup(`<a href="/profile/${safeId}">${safeName}</a>`);
 }
 
 /**
  * Render an error box using error_body.tpl, matching phpBB2's error display.
- * Returns an HTML string suitable for the {ERROR_BOX} template variable.
+ * Returns a MarkupString suitable for the {ERROR_BOX} template variable.
+ * The supplied message is treated as plain text and escaped.
  */
-export function renderErrorBox(message: string): string {
+export function renderErrorBox(message: string): MarkupString {
   const tpl = new Template(THEME_DIR);
   tpl.loadFile("error", "error_body.tpl");
   tpl.assignVars({ ERROR_MESSAGE: message });
-  return tpl.render("error");
+  return markup(tpl.render("error"));
 }
 
 /**
  * Render an interstitial message page using message_body.tpl.
  * Matches phpBB2's message_die(GENERAL_MESSAGE, ...) pattern.
  *
- * messageHtml can include links (e.g. "Click <a href="/">here</a> to return").
- * If redirectUrl is provided, a 5-second meta refresh is added.
+ * messageHtml is treated as pre-rendered HTML — callers must escape any
+ * user-controlled content themselves.
+ * If redirectUrl is provided, a 3-second meta refresh is added.
  */
 export function renderMessagePage(opts: {
   ctx: RenderContext;
@@ -246,15 +254,15 @@ export function renderMessagePage(opts: {
   redirectUrl?: string;
 }): string {
   const meta = opts.redirectUrl
-    ? `<base href="/"><meta http-equiv="refresh" content="3;url=${opts.redirectUrl}">`
-    : '<base href="/">';
+    ? markup(`<base href="/"><meta http-equiv="refresh" content="3;url=${encodeURI(opts.redirectUrl)}">`)
+    : markup('<base href="/">');
 
   const tpl = createPageTemplate(opts.ctx);
   tpl.assignVars({ META: meta });
   tpl.loadFile("body", "message_body.tpl");
   tpl.assignVars({
     MESSAGE_TITLE: opts.title,
-    MESSAGE_TEXT: opts.messageHtml,
+    MESSAGE_TEXT: markup(opts.messageHtml),
     U_INDEX: "/",
     L_INDEX: "Index",
   });

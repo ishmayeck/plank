@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { USER_LEVEL } from "../lib/userLevel.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup, type MarkupString } from "../lib/markup.js";
 
 const pages = new Hono();
 
@@ -195,16 +197,19 @@ pages.get("/viewonline", async (c) => {
   for (const s of registered) {
     const profile = s.profiles as any;
     const userLevel = profile?.user_level ?? 0;
-    let styledUsername = profile?.username ?? "Unknown";
+    const safeName = escapeHtml(profile?.username ?? "Unknown");
+    let styledUsername: MarkupString;
     if (userLevel === USER_LEVEL.ADMIN) {
-      styledUsername = `<b style="color:${ADMIN_COLOR}">${styledUsername}</b>`;
+      styledUsername = markup(`<b style="color:${ADMIN_COLOR}">${safeName}</b>`);
     } else if (userLevel === USER_LEVEL.MOD) {
-      styledUsername = `<b style="color:${MOD_COLOR}">${styledUsername}</b>`;
+      styledUsername = markup(`<b style="color:${MOD_COLOR}">${safeName}</b>`);
+    } else {
+      styledUsername = markup(safeName);
     }
     tpl.assignBlockVars("reg_user_row", {
       ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
       USERNAME: styledUsername,
-      U_USER_PROFILE: `/profile/${profile?.id ?? ""}`,
+      U_USER_PROFILE: `/profile/${encodeURIComponent(profile?.id ?? "")}`,
       LASTUPDATE: formatPhpBBDate(s.session_time),
       FORUM_LOCATION: s.session_page ?? "Index",
       U_FORUM_LOCATION: "/",

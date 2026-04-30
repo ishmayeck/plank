@@ -3,6 +3,8 @@ import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, render
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 import { loginRedirect } from "./auth.js";
 
 const MEMBERS_PER_PAGE = 25;
@@ -62,8 +64,12 @@ profile.get("/profile/:id", async (c) => {
   tpl.loadFile("body", "profile_view_body.tpl");
 
   const avatarImg = profileData.user_avatar
-    ? `<img src="${profileData.user_avatar}" alt="" />`
-    : "";
+    ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="" />`)
+    : markup("");
+
+  const safeWebsite = profileData.user_website
+    ? markup(`<a href="${escapeHtml(profileData.user_website)}" target="_blank">${escapeHtml(profileData.user_website)}</a>`)
+    : markup("");
 
   tpl.assignVars({
     U_INDEX: "/",
@@ -89,9 +95,7 @@ profile.get("/profile/:id", async (c) => {
     LOCATION: profileData.user_from ?? "",
 
     L_WEBSITE: "Website",
-    WWW: profileData.user_website
-      ? `<a href="${profileData.user_website}" target="_blank">${profileData.user_website}</a>`
-      : "",
+    WWW: safeWebsite,
 
     L_OCCUPATION: "Occupation",
     OCCUPATION: profileData.user_occ ?? "",
@@ -103,12 +107,12 @@ profile.get("/profile/:id", async (c) => {
     L_CONTACT: `Contact ${profileData.username}`,
     L_EMAIL_ADDRESS: "E-mail address",
     EMAIL_IMG: profileData.user_viewemail
-      ? `<a href="mailto:TODO">[email]</a>`
+      ? markup(`<a href="mailto:TODO">[email]</a>`)
       : "[ Hidden ]",
     L_PM: "Send private message",
     PM_IMG: user
-      ? `<a href="/privmsg?mode=post&u=${profileData.id}">Send PM</a>`
-      : "",
+      ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(profileData.id)}">Send PM</a>`)
+      : markup(""),
     L_MESSENGER: "MSN Messenger",
     MSN: "",
     L_YAHOO: "Yahoo Messenger",
@@ -350,9 +354,9 @@ profile.get("/memberlist", async (c) => {
     L_INDEX: "Index",
     S_MODE_ACTION: "/memberlist",
     L_SELECT_SORT_METHOD: "Select sort method",
-    S_MODE_SELECT: sortSelect,
+    S_MODE_SELECT: markup(sortSelect),
     L_ORDER: "Order",
-    S_ORDER_SELECT: orderSelect,
+    S_ORDER_SELECT: markup(orderSelect),
     L_SUBMIT: "Go",
     L_USERNAME: "Username",
     L_EMAIL: "E-mail",
@@ -374,17 +378,17 @@ profile.get("/memberlist", async (c) => {
         ROW_CLASS: rowClass,
         ROW_NUMBER: String(offset + rowIndex + 1),
         USERNAME: member.username,
-        U_VIEWPROFILE: `/profile/${member.id}`,
+        U_VIEWPROFILE: `/profile/${encodeURIComponent(member.id)}`,
         FROM: member.user_from ?? "",
         JOINED: formatPhpBBDate(member.user_regdate, true),
         POSTS: String(member.user_posts ?? 0),
         PM_IMG: user
-          ? `<a href="/privmsg?mode=post&u=${member.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`
-          : "",
+          ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(member.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`)
+          : markup(""),
         EMAIL_IMG: member.user_viewemail ? "[email]" : "",
         WWW_IMG: member.user_website
-          ? `<a href="${member.user_website}" target="_blank"><img src="templates/Solaris/images/icon_www.gif" alt="Website" border="0" /></a>`
-          : "",
+          ? markup(`<a href="${escapeHtml(member.user_website)}" target="_blank"><img src="templates/Solaris/images/icon_www.gif" alt="Website" border="0" /></a>`)
+          : markup(""),
       });
       rowIndex++;
     }
@@ -441,11 +445,11 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
 
   tpl.loadFile("body", "profile_add_body.tpl");
 
-  const errorBox = error ? renderErrorBox(error) : "";
+  const errorBox = error ? renderErrorBox(error) : markup("");
 
   tpl.assignVars({
     S_PROFILE_ACTION: "/profile",
-    S_FORM_ENCTYPE: 'enctype="multipart/form-data"',
+    S_FORM_ENCTYPE: markup('enctype="multipart/form-data"'),
     ERROR_BOX: errorBox,
     U_INDEX: "/",
     L_INDEX: "Index",
@@ -493,58 +497,50 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     L_SIGNATURE_EXPLAIN: "This is a block of text that can be added to posts you make",
     SIGNATURE: profileData.user_sig ?? "",
     HTML_STATUS: "HTML is OFF",
-    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
+    BBCODE_STATUS: markup('<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>'),
     SMILIES_STATUS: "Smilies are ON",
 
     // Preferences
     L_PREFERENCES: "Preferences",
     L_PUBLIC_VIEW_EMAIL: "Always show my e-mail address",
-    VIEW_EMAIL_YES: profileData.user_viewemail ? 'checked="checked"' : "",
-    VIEW_EMAIL_NO: !profileData.user_viewemail ? 'checked="checked"' : "",
+    VIEW_EMAIL_YES: profileData.user_viewemail ? markup('checked="checked"') : "",
+    VIEW_EMAIL_NO: !profileData.user_viewemail ? markup('checked="checked"') : "",
     L_YES: "Yes",
     L_NO: "No",
     L_HIDE_USER: "Hide your online status",
-    HIDE_USER_YES: !profileData.user_allow_viewonline
-      ? 'checked="checked"'
-      : "",
-    HIDE_USER_NO: profileData.user_allow_viewonline
-      ? 'checked="checked"'
-      : "",
+    HIDE_USER_YES: !profileData.user_allow_viewonline ? markup('checked="checked"') : "",
+    HIDE_USER_NO: profileData.user_allow_viewonline ? markup('checked="checked"') : "",
     L_NOTIFY_ON_REPLY: "Always notify me of replies",
     L_NOTIFY_ON_REPLY_EXPLAIN: "Sends an e-mail when someone replies to a topic you have posted in. This can be changed whenever you post.",
-    NOTIFY_REPLY_YES: profileData.user_notify ? 'checked="checked"' : "",
-    NOTIFY_REPLY_NO: !profileData.user_notify ? 'checked="checked"' : "",
+    NOTIFY_REPLY_YES: profileData.user_notify ? markup('checked="checked"') : "",
+    NOTIFY_REPLY_NO: !profileData.user_notify ? markup('checked="checked"') : "",
     L_NOTIFY_ON_PRIVMSG: "Notify on new Private Message",
-    NOTIFY_PM_YES: 'checked="checked"',
+    NOTIFY_PM_YES: markup('checked="checked"'),
     NOTIFY_PM_NO: "",
     L_POPUP_ON_PRIVMSG: "Pop up window on new Private Message",
     L_POPUP_ON_PRIVMSG_EXPLAIN: "Some templates may open a new window to inform you when new private messages arrive.",
     POPUP_PM_YES: "",
-    POPUP_PM_NO: 'checked="checked"',
+    POPUP_PM_NO: markup('checked="checked"'),
     L_ALWAYS_ADD_SIGNATURE: "Always attach my signature",
-    ALWAYS_ADD_SIGNATURE_YES: profileData.user_attachsig
-      ? 'checked="checked"'
-      : "",
-    ALWAYS_ADD_SIGNATURE_NO: !profileData.user_attachsig
-      ? 'checked="checked"'
-      : "",
+    ALWAYS_ADD_SIGNATURE_YES: profileData.user_attachsig ? markup('checked="checked"') : "",
+    ALWAYS_ADD_SIGNATURE_NO: !profileData.user_attachsig ? markup('checked="checked"') : "",
     L_ALWAYS_ALLOW_BBCODE: "Always allow BBCode",
-    ALWAYS_ALLOW_BBCODE_YES: 'checked="checked"',
+    ALWAYS_ALLOW_BBCODE_YES: markup('checked="checked"'),
     ALWAYS_ALLOW_BBCODE_NO: "",
     L_ALWAYS_ALLOW_HTML: "Always allow HTML",
     ALWAYS_ALLOW_HTML_YES: "",
-    ALWAYS_ALLOW_HTML_NO: 'checked="checked"',
+    ALWAYS_ALLOW_HTML_NO: markup('checked="checked"'),
     L_ALWAYS_ALLOW_SMILIES: "Always enable Smilies",
-    ALWAYS_ALLOW_SMILIES_YES: 'checked="checked"',
+    ALWAYS_ALLOW_SMILIES_YES: markup('checked="checked"'),
     ALWAYS_ALLOW_SMILIES_NO: "",
     L_BOARD_LANGUAGE: "Board Language",
     LANGUAGE_SELECT: "English",
     L_BOARD_STYLE: "Board Style",
     STYLE_SELECT: "Solaris",
     L_TIMEZONE: "Timezone",
-    TIMEZONE_SELECT: `<select name="timezone"><option value="UTC" selected>UTC</option></select>`,
+    TIMEZONE_SELECT: markup(`<select name="timezone"><option value="UTC" selected>UTC</option></select>`),
     L_DATE_FORMAT: "Date format",
-    L_DATE_FORMAT_EXPLAIN: 'The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.',
+    L_DATE_FORMAT_EXPLAIN: markup('The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.'),
     DATE_FORMAT: profileData.user_dateformat ?? "DD Mon YYYY HH24:MI",
 
     // Avatar
@@ -553,7 +549,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
       `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`,
     L_CURRENT_IMAGE: "Current Image",
     AVATAR: profileData.user_avatar
-      ? `<img src="${profileData.user_avatar}" alt="Avatar" />`
+      ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="Avatar" />`)
       : "No avatar",
     L_DELETE_AVATAR: "Delete Image",
     L_UPLOAD_AVATAR_FILE: "Upload Avatar from your machine",

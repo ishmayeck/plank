@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { getSupabaseAdmin } from "../db/client.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
@@ -90,28 +92,26 @@ privmsg.get("/privmsg", async (c) => {
   );
 
   // Folder nav links
-  const folderImg = (name: string, active: boolean) => {
-    const cls = active ? "cattitle" : "cattitle";
-    return `<a href="/privmsg?folder=${name}">${capitalize(name)}</a>`;
-  };
+  const folderImg = (name: string) =>
+    markup(`<a href="/privmsg?folder=${name}">${capitalize(name)}</a>`);
 
   tpl.assignVars({
     U_INDEX: "/",
     L_INDEX: "Index",
-    INBOX: folderImg("inbox", folder === "inbox"),
+    INBOX: folderImg("inbox"),
     INBOX_IMG: "",
-    SENTBOX: folderImg("sentbox", folder === "sentbox"),
+    SENTBOX: folderImg("sentbox"),
     SENTBOX_IMG: "",
-    OUTBOX: folderImg("outbox", folder === "outbox"),
+    OUTBOX: folderImg("outbox"),
     OUTBOX_IMG: "",
-    SAVEBOX: folderImg("savebox", folder === "savebox"),
+    SAVEBOX: folderImg("savebox"),
     SAVEBOX_IMG: "",
 
-    POST_PM_IMG: `<a href="/privmsg?mode=post"><img src="templates/Solaris/images/lang_english/new_topic.gif" alt="New PM" border="0" /></a>`,
+    POST_PM_IMG: markup(`<a href="/privmsg?mode=post"><img src="templates/Solaris/images/lang_english/new_topic.gif" alt="New PM" border="0" /></a>`),
     S_PRIVMSGS_ACTION: `/privmsg?folder=${folder}`,
 
     L_DISPLAY_MESSAGES: "Display messages from previous",
-    S_SELECT_MSG_DAYS: '<option value="0" selected>All Messages</option>',
+    S_SELECT_MSG_DAYS: markup('<option value="0" selected>All Messages</option>'),
     L_GO: "Go",
 
     L_FLAG: "",
@@ -127,7 +127,7 @@ privmsg.get("/privmsg", async (c) => {
     L_MARK_ALL: "Mark all",
     L_UNMARK_ALL: "Unmark all",
 
-    S_HIDDEN_FIELDS: `<input type="hidden" name="folder" value="${folder}" />`,
+    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="folder" value="${escapeHtml(folder)}" />`),
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
@@ -205,10 +205,11 @@ async function handleReadPM(c: any) {
       .eq("id", pmId);
   }
 
-  // Render message body
+  // Render message body — privmsgs_text_html is server-rendered HTML;
+  // fall back to parsing the raw BBCode source.
   const smilies = await loadSmilies(supabase);
-  let messageHtml = pm.privmsgs_text?.privmsgs_text_html ?? "";
-  if (!messageHtml && pm.privmsgs_text?.privmsgs_text) {
+  let messageHtml = markup(pm.privmsgs_text?.privmsgs_text_html ?? "");
+  if (!messageHtml.html && pm.privmsgs_text?.privmsgs_text) {
     messageHtml = parseBBCode(pm.privmsgs_text.privmsgs_text);
   }
   if (pm.privmsgs_enable_smilies) {
@@ -228,21 +229,21 @@ async function handleReadPM(c: any) {
   tpl.assignVars({
     U_INDEX: "/",
     L_INDEX: "Index",
-    INBOX: `<a href="/privmsg?folder=inbox">Inbox</a>`,
+    INBOX: markup(`<a href="/privmsg?folder=inbox">Inbox</a>`),
     INBOX_IMG: "",
-    SENTBOX: `<a href="/privmsg?folder=sentbox">Sentbox</a>`,
+    SENTBOX: markup(`<a href="/privmsg?folder=sentbox">Sentbox</a>`),
     SENTBOX_IMG: "",
-    OUTBOX: `<a href="/privmsg?folder=outbox">Outbox</a>`,
+    OUTBOX: markup(`<a href="/privmsg?folder=outbox">Outbox</a>`),
     OUTBOX_IMG: "",
-    SAVEBOX: `<a href="/privmsg?folder=savebox">Savebox</a>`,
+    SAVEBOX: markup(`<a href="/privmsg?folder=savebox">Savebox</a>`),
     SAVEBOX_IMG: "",
 
     BOX_NAME: boxName,
     L_MESSAGE: "Message",
     L_FROM: "From:",
-    MESSAGE_FROM: `<a href="/profile/${pm.from_user?.id}">${pm.from_user?.username ?? "Unknown"}</a>`,
+    MESSAGE_FROM: markup(`<a href="/profile/${encodeURIComponent(pm.from_user?.id ?? "")}">${escapeHtml(pm.from_user?.username ?? "Unknown")}</a>`),
     L_TO: "To:",
-    MESSAGE_TO: `<a href="/profile/${pm.to_user?.id}">${pm.to_user?.username ?? "Unknown"}</a>`,
+    MESSAGE_TO: markup(`<a href="/profile/${encodeURIComponent(pm.to_user?.id ?? "")}">${escapeHtml(pm.to_user?.username ?? "Unknown")}</a>`),
     L_POSTED: "Posted:",
     POST_DATE: formatPhpBBDate(pm.privmsgs_date),
     L_SUBJECT: "Subject:",
@@ -250,21 +251,21 @@ async function handleReadPM(c: any) {
     MESSAGE: messageHtml,
 
     REPLY_PM_IMG: !isOwnMessage
-      ? `<a href="/privmsg?mode=post&p=${pmId}"><img src="templates/Solaris/images/lang_english/post_reply.gif" alt="Reply" border="0" /></a>`
-      : "",
+      ? markup(`<a href="/privmsg?mode=post&p=${pmId}"><img src="templates/Solaris/images/lang_english/post_reply.gif" alt="Reply" border="0" /></a>`)
+      : markup(""),
     QUOTE_PM_IMG: !isOwnMessage
-      ? `<a href="/privmsg?mode=post&p=${pmId}&quote=1"><img src="templates/Solaris/images/lang_english/icon_quote.gif" alt="Quote" border="0" /></a>`
-      : "",
+      ? markup(`<a href="/privmsg?mode=post&p=${pmId}&quote=1"><img src="templates/Solaris/images/lang_english/icon_quote.gif" alt="Quote" border="0" /></a>`)
+      : markup(""),
     EDIT_PM_IMG: "",
 
     S_PRIVMSGS_ACTION: `/privmsg?mode=read&p=${pmId}`,
-    S_HIDDEN_FIELDS: `<input type="hidden" name="pm_id" value="${pmId}" />`,
+    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="pm_id" value="${pmId}" />`),
     L_SAVE_MSG: "Save Message",
     L_DELETE_MSG: "Delete Message",
 
     // Contact info
-    PROFILE_IMG: `<a href="/profile/${pm.from_user?.id}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`,
-    PM_IMG: `<a href="/privmsg?mode=post&u=${pm.from_user?.id}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`,
+    PROFILE_IMG: markup(`<a href="/profile/${encodeURIComponent(pm.from_user?.id ?? "")}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`),
+    PM_IMG: markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(pm.from_user?.id ?? "")}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`),
     EMAIL_IMG: "",
     WWW_IMG: "",
     AIM_IMG: "",
@@ -345,7 +346,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   tpl.assignVars({
     S_POST_ACTION: "/privmsg",
     POST_PREVIEW_BOX: "",
-    ERROR_BOX: overrides?.error ? renderErrorBox(overrides.error) : "",
+    ERROR_BOX: overrides?.error ? renderErrorBox(overrides.error) : markup(""),
     U_INDEX: "/",
     L_INDEX: "Index",
     U_VIEW_FORUM: "/privmsg?folder=inbox",
@@ -358,7 +359,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     L_PREVIEW: "Preview",
     L_SUBMIT: "Submit",
     L_EMPTY_MESSAGE: "You must enter a message when posting.",
-    S_HIDDEN_FORM_FIELDS: '<input type="hidden" name="mode" value="post" />',
+    S_HIDDEN_FORM_FIELDS: markup('<input type="hidden" name="mode" value="post" />'),
     SUBJECT: subject,
     MESSAGE: message,
     S_TIMEZONE: "All times are GMT",
@@ -412,7 +413,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     L_FONT_HUGE: "Huge",
 
     HTML_STATUS: "HTML is OFF",
-    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
+    BBCODE_STATUS: markup('<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>'),
     SMILIES_STATUS: "Smilies are ON",
     L_DISABLE_HTML: "Disable HTML in this message",
     L_DISABLE_BBCODE: "Disable BBCode in this message",
@@ -423,7 +424,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     S_HTML_CHECKED: "",
     S_BBCODE_CHECKED: "",
     S_SMILIES_CHECKED: "",
-    S_SIGNATURE_CHECKED: 'checked="checked"',
+    S_SIGNATURE_CHECKED: markup('checked="checked"'),
     S_NOTIFY_CHECKED: "",
     S_TYPE_TOGGLE: "",
     U_MORE_SMILIES: "/posting_smilies",

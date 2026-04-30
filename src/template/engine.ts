@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { escapeRegex } from "../lib/escape.js";
+import { escapeHtml, escapeRegex } from "../lib/escape.js";
 import type { TemplateValue } from "../lib/markup.js";
 
 /**
@@ -281,13 +281,14 @@ export class Template {
   }
 
   /**
-   * Render a value into the output stream. For chunk 4a this just
-   * stringifies — both plain strings and MarkupString collapse to
-   * their raw form. Chunk 4b will flip strings to escape-by-default.
+   * Render a value into the output stream. Plain strings are HTML-
+   * escaped; MarkupString values are passed through verbatim. Wrap any
+   * pre-rendered HTML at the assignVars site with markup() to opt out
+   * of escaping.
    */
   private renderValue(value: TemplateValue | undefined): string {
     if (value === undefined) return "";
-    return typeof value === "string" ? value : value.html;
+    return typeof value === "string" ? escapeHtml(value) : value.html;
   }
 
   private substituteVars(

@@ -1,3 +1,5 @@
+import { markup, type MarkupString } from "./markup.js";
+
 /**
  * Generate phpBB2-style pagination HTML.
  *
@@ -8,11 +10,11 @@ export function generatePagination(
   totalItems: number,
   perPage: number,
   currentPage: number
-): { html: string; pageNumber: string } {
+): { html: MarkupString; pageNumber: string } {
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
 
   if (totalPages <= 1) {
-    return { html: "", pageNumber: "Page 1 of 1" };
+    return { html: markup(""), pageNumber: "Page 1 of 1" };
   }
 
   const pages: string[] = [];
@@ -73,7 +75,7 @@ export function generatePagination(
       : "";
 
   return {
-    html: prev + pages.join(", ") + next,
+    html: markup(prev + pages.join(", ") + next),
     pageNumber: `Page ${currentPage} of ${totalPages}`,
   };
 }
@@ -91,9 +93,9 @@ export function topicGotoPage(
   topicUrl: string,
   replyCount: number,
   postsPerPage: number
-): string {
+): MarkupString {
   const totalPages = Math.ceil((replyCount + 1) / postsPerPage);
-  if (totalPages <= 1) return "";
+  if (totalPages <= 1) return markup("");
 
   const links: string[] = [];
   const showPages = Math.min(totalPages, 4);
@@ -109,5 +111,5 @@ export function topicGotoPage(
     );
   }
 
-  return `<span class="gensmall">[ ${links.join(", ")} ]</span>`;
+  return markup(`<span class="gensmall">[ ${links.join(", ")} ]</span>`);
 }

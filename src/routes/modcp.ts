@@ -3,6 +3,8 @@ import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate, fet
 import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 
 const modcp = new Hono();
 
@@ -116,7 +118,7 @@ modcp.get("/modcp", async (c) => {
     L_LOCK: "Lock",
     L_UNLOCK: "Unlock",
     S_MODCP_ACTION: "/modcp",
-    S_HIDDEN_FIELDS: `<input type="hidden" name="f" value="${forumId}" />`,
+    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="f" value="${forumId}" />`),
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
     S_TIMEZONE: "All times are GMT",
@@ -138,7 +140,7 @@ modcp.get("/modcp", async (c) => {
       tpl.assignBlockVars("topicrow", {
         TOPIC_ID: String(topic.id),
         TOPIC_TITLE: topic.topic_title,
-        TOPIC_TYPE: topicType,
+        TOPIC_TYPE: markup(topicType),
         TOPIC_FOLDER_IMG: folderImg,
         L_TOPIC_FOLDER_ALT: topic.topic_status === 1 ? "Locked" : "No new posts",
         REPLIES: String(topic.topic_replies ?? 0),
@@ -289,7 +291,7 @@ async function renderMovePage(
   let forumSelect = '<select name="new_forum_id">';
   if (forums) {
     for (const f of forums) {
-      forumSelect += `<option value="${f.id}"${f.id === sourceForumId ? " selected" : ""}>${f.forum_name}</option>`;
+      forumSelect += `<option value="${f.id}"${f.id === sourceForumId ? " selected" : ""}>${escapeHtml(f.forum_name)}</option>`;
     }
   }
   forumSelect += "</select>";
@@ -316,8 +318,8 @@ async function renderMovePage(
     L_YES: "Yes",
     L_NO: "No",
     S_MODCP_ACTION: "/modcp",
-    S_FORUM_SELECT: forumSelect,
-    S_HIDDEN_FIELDS: hiddenFields,
+    S_FORUM_SELECT: markup(forumSelect),
+    S_HIDDEN_FIELDS: markup(hiddenFields),
   });
 
   return c.html(renderPage(tpl));
@@ -446,7 +448,7 @@ modcp.get("/modcp/split", async (c) => {
   let forumSelect = '<select name="new_forum_id">';
   if (forums) {
     for (const f of forums) {
-      forumSelect += `<option value="${f.id}"${f.id === topic.forum_id ? " selected" : ""}>${f.forum_name}</option>`;
+      forumSelect += `<option value="${f.id}"${f.id === topic.forum_id ? " selected" : ""}>${escapeHtml(f.forum_name)}</option>`;
     }
   }
   forumSelect += "</select>";
@@ -477,8 +479,8 @@ modcp.get("/modcp/split", async (c) => {
     L_POSTED: "Posted:",
     L_POST_SUBJECT: "Post subject:",
     S_SPLIT_ACTION: "/modcp",
-    S_FORUM_SELECT: forumSelect,
-    S_HIDDEN_FIELDS: `<input type="hidden" name="topic_id" value="${topicId}" />`,
+    S_FORUM_SELECT: markup(forumSelect),
+    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="topic_id" value="${topicId}" />`),
     S_TIMEZONE: "All times are GMT",
   });
 
@@ -493,7 +495,7 @@ modcp.get("/modcp/split", async (c) => {
         POST_SUBJECT: post.posts_text?.post_subject ?? "",
         MESSAGE: parseBBCode(post.posts_text?.post_text ?? ""),
         U_POST_ID: String(post.id),
-        S_SPLIT_CHECKBOX: `<input type="checkbox" name="post_id_list[]" value="${post.id}" class="checkbox" />`,
+        S_SPLIT_CHECKBOX: markup(`<input type="checkbox" name="post_id_list[]" value="${post.id}" class="checkbox" />`),
       });
       rowIndex++;
     }
@@ -847,7 +849,7 @@ function renderConfirmPage(
 
   let hiddenHtml = "";
   for (const [key, val] of Object.entries(opts.hiddenFields)) {
-    hiddenHtml += `<input type="hidden" name="${key}" value="${val}" />`;
+    hiddenHtml += `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(val)}" />`;
   }
 
   tpl.assignVars({
@@ -856,7 +858,7 @@ function renderConfirmPage(
     L_YES: "Yes",
     L_NO: "No",
     S_CONFIRM_ACTION: opts.action,
-    S_HIDDEN_FIELDS: hiddenHtml,
+    S_HIDDEN_FIELDS: markup(hiddenHtml),
     U_INDEX: "/",
     L_INDEX: "Index",
   });

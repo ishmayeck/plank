@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "../db/client.js";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup } from "../lib/markup.js";
 
 const RESULTS_PER_PAGE = 25;
 
@@ -54,7 +56,7 @@ search.get("/search", async (c) => {
   let forumOptions = '<option value="0">All Forums</option>';
   if (forums) {
     for (const f of forums) {
-      forumOptions += `<option value="${f.id}">${f.forum_name}</option>`;
+      forumOptions += `<option value="${f.id}">${escapeHtml(f.forum_name)}</option>`;
     }
   }
 
@@ -93,30 +95,31 @@ search.get("/search", async (c) => {
     L_INDEX: "Index",
     L_SEARCH_QUERY: "Search Query",
     L_SEARCH_KEYWORDS: "Search for Keywords",
-    L_SEARCH_KEYWORDS_EXPLAIN:
-      "You can use <u>AND</u> to define words which must be in the results, <u>OR</u> to define words which may be in the result and <u>NOT</u> to define words which should not be in the result. Use * as a wildcard for partial matches",
+    L_SEARCH_KEYWORDS_EXPLAIN: markup(
+      "You can use <u>AND</u> to define words which must be in the results, <u>OR</u> to define words which may be in the result and <u>NOT</u> to define words which should not be in the result. Use * as a wildcard for partial matches"
+    ),
     L_SEARCH_ANY_TERMS: "Search for any terms or use query as entered",
     L_SEARCH_ALL_TERMS: "Search for all terms",
     L_SEARCH_AUTHOR: "Search for Author",
     L_SEARCH_AUTHOR_EXPLAIN: "Use * as a wildcard for partial matches",
     L_SEARCH_OPTIONS: "Search Options",
     L_FORUM: "Forum",
-    S_FORUM_OPTIONS: forumOptions,
+    S_FORUM_OPTIONS: markup(forumOptions),
     L_SEARCH_PREVIOUS: "Search previous",
-    S_TIME_OPTIONS: timeOptions,
+    S_TIME_OPTIONS: markup(timeOptions),
     L_SEARCH_MESSAGE_TITLE: "Search topic title and message text",
     L_SEARCH_MESSAGE_ONLY: "Search message text only",
     L_CATEGORY: "Category:",
-    S_CATEGORY_OPTIONS: '<option value="0">All Categories</option>',
+    S_CATEGORY_OPTIONS: markup('<option value="0">All Categories</option>'),
     L_SORT_BY: "Sort by",
-    S_SORT_OPTIONS: sortOptions,
+    S_SORT_OPTIONS: markup(sortOptions),
     L_SORT_ASCENDING: "Ascending",
     L_SORT_DESCENDING: "Descending",
     L_DISPLAY_RESULTS: "Display results as",
     L_POSTS: "Posts",
     L_TOPICS: "Topics",
     L_RETURN_FIRST: "Return first",
-    S_CHARACTER_OPTIONS: charOptions,
+    S_CHARACTER_OPTIONS: markup(charOptions),
     L_CHARACTERS: "characters of posts",
     L_SEARCH: "Search",
     S_HIDDEN_FIELDS: "",
@@ -315,17 +318,17 @@ async function handleTopicResults(
       TOPIC_TITLE: topic.topic_title,
       U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
       TOPIC_AUTHOR: topic.poster
-        ? `<a href="/profile/${topic.topic_poster}">${topic.poster.username}</a>`
-        : "",
+        ? markup(`<a href="/profile/${encodeURIComponent(topic.topic_poster)}">${escapeHtml(topic.poster.username)}</a>`)
+        : markup(""),
       REPLIES: String(topic.topic_replies ?? 0),
       VIEWS: String(topic.topic_views ?? 0),
       LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
       LAST_POST_AUTHOR: lastPostAuthor
-        ? `<a href="/profile/${lastPostAuthor.id}">${lastPostAuthor.username}</a>`
-        : "",
+        ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
+        : markup(""),
       LAST_POST_IMG: lastPost
-        ? `<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
-        : "",
+        ? markup(`<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`)
+        : markup(""),
       NEWEST_POST_IMG: "",
       TOPIC_TYPE: "",
       GOTO_PAGE: "",
@@ -443,7 +446,7 @@ async function handlePostResults(
         TOPIC_TITLE: topic?.topic_title ?? "",
         U_TOPIC: `/viewtopic/${topic?.id ?? post.topic_id}`,
         POSTER_NAME: post.poster
-          ? `<a href="/profile/${post.poster_id}">${post.poster.username}</a>`
+          ? markup(`<a href="/profile/${encodeURIComponent(post.poster_id)}">${escapeHtml(post.poster.username)}</a>`)
           : "Guest",
         TOPIC_REPLIES: String(topic?.topic_replies ?? 0),
         TOPIC_VIEWS: String(topic?.topic_views ?? 0),
@@ -547,17 +550,17 @@ async function handleNewPosts(c: any) {
         TOPIC_TITLE: topic.topic_title,
         U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
         TOPIC_AUTHOR: topic.poster
-          ? `<a href="/profile/${topic.topic_poster}">${topic.poster.username}</a>`
-          : "",
+          ? markup(`<a href="/profile/${encodeURIComponent(topic.topic_poster)}">${escapeHtml(topic.poster.username)}</a>`)
+          : markup(""),
         REPLIES: String(topic.topic_replies ?? 0),
         VIEWS: String(topic.topic_views ?? 0),
         LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
         LAST_POST_AUTHOR: lastPostAuthor
-          ? `<a href="/profile/${lastPostAuthor.id}">${lastPostAuthor.username}</a>`
-          : "",
+          ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
+          : markup(""),
         LAST_POST_IMG: lastPost
-          ? `<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
-          : "",
+          ? markup(`<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`)
+          : markup(""),
         NEWEST_POST_IMG: "",
         TOPIC_TYPE: "",
         GOTO_PAGE: "",
@@ -646,17 +649,17 @@ async function handleUnanswered(c: any) {
         TOPIC_TITLE: topic.topic_title,
         U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
         TOPIC_AUTHOR: topic.poster
-          ? `<a href="/profile/${topic.topic_poster}">${topic.poster.username}</a>`
-          : "",
+          ? markup(`<a href="/profile/${encodeURIComponent(topic.topic_poster)}">${escapeHtml(topic.poster.username)}</a>`)
+          : markup(""),
         REPLIES: "0",
         VIEWS: String(topic.topic_views ?? 0),
         LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
         LAST_POST_AUTHOR: lastPostAuthor
-          ? `<a href="/profile/${lastPostAuthor.id}">${lastPostAuthor.username}</a>`
-          : "",
+          ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
+          : markup(""),
         LAST_POST_IMG: lastPost
-          ? `<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
-          : "",
+          ? markup(`<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`)
+          : markup(""),
         NEWEST_POST_IMG: "",
         TOPIC_TYPE: "",
         GOTO_PAGE: "",

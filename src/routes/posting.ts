@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
+import { escapeHtml } from "../lib/escape.js";
+import { markup, type MarkupString } from "../lib/markup.js";
 import { Template } from "../template/engine.js";
 import { join } from "node:path";
 import { loginRedirect } from "./auth.js";
@@ -724,22 +726,22 @@ function renderPostingForm(opts: PostingFormOpts): string {
   tpl.loadFile("body", "posting_body.tpl");
 
   // Build hidden fields
-  const hiddenFields = [
-    `<input type="hidden" name="mode" value="${opts.mode}" />`,
+  const hiddenFields = markup([
+    `<input type="hidden" name="mode" value="${escapeHtml(opts.mode)}" />`,
     opts.forumId ? `<input type="hidden" name="forum_id" value="${opts.forumId}" />` : "",
     opts.topicId ? `<input type="hidden" name="topic_id" value="${opts.topicId}" />` : "",
     opts.postId ? `<input type="hidden" name="post_id" value="${opts.postId}" />` : "",
-  ].join("");
+  ].join(""));
 
-  // Preview box
+  // Preview box (opts.preview is HTML from parseBBCode + smilies)
   const previewBox = opts.preview
-    ? `<table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td class="tableborder"><table width="100%" cellpadding="4" cellspacing="1" border="0"><tr><th class="thHead">Preview</th></tr><tr><td class="row1"><span class="postbody">${opts.preview}</span></td></tr></table></td></tr></table><br />`
-    : "";
+    ? markup(`<table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td class="tableborder"><table width="100%" cellpadding="4" cellspacing="1" border="0"><tr><th class="thHead">Preview</th></tr><tr><td class="row1"><span class="postbody">${opts.preview}</span></td></tr></table></td></tr></table><br />`)
+    : markup("");
 
   tpl.assignVars({
     S_POST_ACTION: "/posting",
     POST_PREVIEW_BOX: previewBox,
-    ERROR_BOX: opts.error ? renderErrorBox(opts.error) : "",
+    ERROR_BOX: opts.error ? renderErrorBox(opts.error) : markup(""),
     U_INDEX: "/",
     L_INDEX: "Index",
     U_VIEW_FORUM: opts.forumId ? `/viewforum/${opts.forumId}` : "/",
@@ -756,9 +758,9 @@ function renderPostingForm(opts: PostingFormOpts): string {
     SUBJECT: opts.subject,
     MESSAGE: opts.message,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: opts.jumpboxHtml ?? "",
-    TOPIC_REVIEW_BOX: opts.topicReviewHtml ?? "",
-    POLLBOX: opts.showPoll ? renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? [""], opts.pollLength ?? 0) : "",
+    JUMPBOX: opts.jumpboxHtml ?? markup(""),
+    TOPIC_REVIEW_BOX: opts.topicReviewHtml ? markup(opts.topicReviewHtml) : markup(""),
+    POLLBOX: opts.showPoll ? markup(renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? [""], opts.pollLength ?? 0)) : markup(""),
     S_SMILIES_COLSPAN: "4",
 
     // BBCode toolbar labels
@@ -805,7 +807,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
 
     // Checkbox options
     HTML_STATUS: "HTML is OFF",
-    BBCODE_STATUS: '<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>',
+    BBCODE_STATUS: markup('<a href="/faq" target="_phpbbcode">BBCode</a> is <u>ON</u>'),
     SMILIES_STATUS: "Smilies are ON",
     L_DISABLE_HTML: "Disable HTML in this post",
     L_DISABLE_BBCODE: "Disable BBCode in this post",
@@ -816,9 +818,9 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_HTML_CHECKED: "",
     S_BBCODE_CHECKED: "",
     S_SMILIES_CHECKED: "",
-    S_SIGNATURE_CHECKED: opts.user.userSig && opts.user.attachSig ? 'checked="checked"' : "",
+    S_SIGNATURE_CHECKED: opts.user.userSig && opts.user.attachSig ? markup('checked="checked"') : "",
     S_NOTIFY_CHECKED: "",
-    S_TYPE_TOGGLE: opts.topicTypeToggle ?? "",
+    S_TYPE_TOGGLE: opts.topicTypeToggle ? markup(opts.topicTypeToggle) : markup(""),
 
     L_USERNAME: "Username",
     USERNAME: opts.user.username,
