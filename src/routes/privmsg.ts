@@ -186,7 +186,7 @@ async function handleReadPM(c: any) {
        to_user:profiles!privmsgs_privmsgs_to_userid_fkey(id, username)`
     )
     .eq("id", pmId)
-    .single();
+    .maybeSingle();
 
   if (!pm) return c.text("Message not found", 404);
 
@@ -306,7 +306,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
       .from("profiles")
       .select("username")
       .eq("id", recipientId)
-      .single();
+      .maybeSingle();
     if (recipient) recipientUsername = recipient.username;
   }
 
@@ -321,7 +321,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
         "*, privmsgs_text(*), from_user:profiles!privmsgs_privmsgs_from_userid_fkey(username)"
       )
       .eq("id", parseInt(replyPmId, 10))
-      .single();
+      .maybeSingle();
 
     if (pm) {
       recipientUsername = pm.from_user?.username ?? "";
@@ -487,7 +487,7 @@ privmsg.post("/privmsg", async (c) => {
       .from("profiles")
       .select("id")
       .eq("username", recipientName)
-      .single();
+      .maybeSingle();
 
     if (!recipient) {
       return handleComposePM(c, {
@@ -511,7 +511,7 @@ privmsg.post("/privmsg", async (c) => {
         privmsgs_attach_sig: body.attach_sig === "on",
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error || !pm) {
       return handleComposePM(c, {
@@ -548,7 +548,7 @@ privmsg.post("/privmsg", async (c) => {
         .from("privmsgs")
         .select("privmsgs_from_userid, privmsgs_to_userid")
         .eq("id", parseInt(pmId, 10))
-        .single();
+        .maybeSingle();
 
       if (pm && (pm.privmsgs_from_userid === user.id || pm.privmsgs_to_userid === user.id)) {
         await adminDb.from("privmsgs").delete().eq("id", parseInt(pmId, 10));
@@ -566,7 +566,7 @@ privmsg.post("/privmsg", async (c) => {
         .from("privmsgs")
         .select("privmsgs_from_userid, privmsgs_to_userid")
         .eq("id", parseInt(pmId, 10))
-        .single();
+        .maybeSingle();
 
       if (pm) {
         const newType =

@@ -73,7 +73,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
           .from("profiles")
           .select("username, user_level, user_lastvisit, user_sig, user_attachsig")
           .eq("id", data.session.user.id)
-          .single(),
+          .maybeSingle(),
         adminDb
           .from("privmsgs")
           .select("id", { count: "exact", head: true })

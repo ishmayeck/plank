@@ -22,12 +22,13 @@ poll.post("/poll", async (c) => {
 
   const adminDb = getSupabaseAdmin();
 
-  // Get the poll for this topic
+  // Get the poll for this topic — most topics have no poll, so 0 rows
+  // is the common case (would otherwise log a Supabase error per call).
   const { data: pollQ } = await adminDb
     .from("poll_questions")
     .select("id, poll_start, poll_length")
     .eq("topic_id", topicId)
-    .single();
+    .maybeSingle();
 
   if (!pollQ) return c.text("Poll not found", 404);
 
@@ -40,13 +41,13 @@ poll.post("/poll", async (c) => {
     }
   }
 
-  // Check if user already voted
+  // Check if user already voted (most users haven't, so 0 rows is normal)
   const { data: existingVote } = await adminDb
     .from("poll_votes")
     .select("poll_id")
     .eq("poll_id", pollQ.id)
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (existingVote) {
     return c.redirect(`/viewtopic/${topicId}`);
@@ -58,7 +59,7 @@ poll.post("/poll", async (c) => {
     .select("id")
     .eq("id", optionId)
     .eq("poll_id", pollQ.id)
-    .single();
+    .maybeSingle();
 
   if (!option) return c.text("Invalid option", 400);
 
@@ -94,7 +95,7 @@ export async function renderPollForTopic(
     .from("poll_questions")
     .select("*")
     .eq("topic_id", topicId)
-    .single();
+    .maybeSingle();
 
   if (!pollQ) return markup("");
 
@@ -115,7 +116,7 @@ export async function renderPollForTopic(
       .select("poll_id")
       .eq("poll_id", pollQ.id)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
     hasVoted = !!vote;
   }
 

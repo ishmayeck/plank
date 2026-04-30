@@ -22,7 +22,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     .from("forums")
     .select("*, categories(cat_title)")
     .eq("id", forumId)
-    .single();
+    .maybeSingle();
 
   if (forumError || !forum) {
     return c.text("Forum not found", 404);

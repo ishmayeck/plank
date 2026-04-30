@@ -24,7 +24,7 @@ profile.get("/profile/:id", async (c) => {
     .from("profiles")
     .select("*")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   if (!profileData) {
     return c.text("User not found", 404);
@@ -140,7 +140,7 @@ profile.get("/profile", async (c) => {
     .from("profiles")
     .select("*")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
   if (!profileData) return c.text("Profile not found", 404);
 
@@ -198,7 +198,7 @@ profile.post("/profile", async (c) => {
         .from("profiles")
         .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
       return c.html(
         renderProfileEditForm({
           c,
@@ -240,7 +240,7 @@ profile.post("/profile", async (c) => {
         .from("profiles")
         .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
       const avatarConfig = await getAvatarConfig(adminDb);
       return c.html(
         renderProfileEditForm({
@@ -260,7 +260,7 @@ profile.post("/profile", async (c) => {
         .from("profiles")
         .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
       const avatarConfig = await getAvatarConfig(adminDb);
       return c.html(
         renderProfileEditForm({

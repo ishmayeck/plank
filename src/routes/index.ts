@@ -45,7 +45,7 @@ index.get("/", async (c) => {
     .select("id, username")
     .order("user_regdate", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   // Online user stats (last 5 minutes)
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -218,7 +218,7 @@ index.get("/", async (c) => {
           .eq("forum_id", fid)
           .order("post_time", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
         if (latest) {
           const poster = latest.poster as any;
           lastPostMap[fid] = {

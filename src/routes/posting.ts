@@ -41,7 +41,7 @@ posting.get("/posting", async (c) => {
       .from("forums")
       .select("forum_name")
       .eq("id", forumId)
-      .single();
+      .maybeSingle();
     forumName = forum?.forum_name ?? "";
   } else if (mode === "reply") {
     topicId = parseInt(c.req.query("t") ?? "0", 10);
@@ -49,7 +49,7 @@ posting.get("/posting", async (c) => {
       .from("topics")
       .select("*, forums(forum_name)")
       .eq("id", topicId)
-      .single();
+      .maybeSingle();
     if (!topic) return c.text("Topic not found", 404);
     forumId = topic.forum_id;
     forumName = topic.forums?.forum_name ?? "";
@@ -61,7 +61,7 @@ posting.get("/posting", async (c) => {
       .from("posts")
       .select("*, posts_text(*), poster:profiles!posts_poster_id_fkey(username), topics!posts_topic_id_fkey(topic_title, forum_id, forums(forum_name))")
       .eq("id", postId)
-      .single();
+      .maybeSingle();
     if (!post) return c.text("Post not found", 404);
     topicId = post.topic_id;
     forumId = post.topics?.forum_id ?? 0;
@@ -75,7 +75,7 @@ posting.get("/posting", async (c) => {
       .from("posts")
       .select("*, posts_text(*), topics!posts_topic_id_fkey(id, topic_title, topic_type, topic_first_post_id, forum_id, forums(forum_name))")
       .eq("id", postId)
-      .single();
+      .maybeSingle();
     if (!post) return c.text("Post not found", 404);
     // Check permission: own post or mod/admin
     if (post.poster_id !== user.id && !isModOrAdmin(user)) {
@@ -95,7 +95,7 @@ posting.get("/posting", async (c) => {
       .from("posts")
       .select("*, topics!posts_topic_id_fkey(forum_id)")
       .eq("id", postId)
-      .single();
+      .maybeSingle();
     if (!post) return c.text("Post not found", 404);
     if (post.poster_id !== user.id && !isModOrAdmin(user)) {
       return c.text("Forbidden", 403);
@@ -204,7 +204,7 @@ posting.post("/posting", async (c) => {
   if (body.add_poll_option || body.edit_poll_option || Object.keys(body).some(k => k.startsWith("del_poll_option"))) {
     const supabase = c.get("supabase");
     const smilies = await loadSmilies(supabase);
-    const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+    const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
     let pollOpts = collectPollOptions();
 
     if (body.add_poll_option) {
@@ -252,7 +252,7 @@ posting.post("/posting", async (c) => {
       .from("forums")
       .select("forum_name")
       .eq("id", forumId)
-      .single();
+      .maybeSingle();
 
     const previewHtml = parseBBCode(message);
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
@@ -284,7 +284,7 @@ posting.post("/posting", async (c) => {
   if (mode !== "delete" && !message.trim()) {
     const supabase = c.get("supabase");
     const smilies = await loadSmilies(supabase);
-    const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+    const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
     return c.html(renderPostingForm({
       c,
@@ -305,7 +305,7 @@ posting.post("/posting", async (c) => {
     if (!subject.trim()) {
       const supabase = c.get("supabase");
       const smilies = await loadSmilies(supabase);
-      const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+      const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
       return c.html(renderPostingForm({
         c,
         user, mode, forumId, topicId, postId,
@@ -325,7 +325,7 @@ posting.post("/posting", async (c) => {
       if (optCount < 2) {
         const supabase = c.get("supabase");
         const smilies = await loadSmilies(supabase);
-        const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
+        const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
         const pollOpts: string[] = [];
         for (const [k, v] of Object.entries(body)) {
           if (k.match(/^poll_option_text\[\d+\]$/)) pollOpts.push((v as string) ?? "");
@@ -354,7 +354,7 @@ posting.post("/posting", async (c) => {
         topic_type: topicType,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (topicErr || !topic) return c.text("Failed to create topic", 500);
 
@@ -371,7 +371,7 @@ posting.post("/posting", async (c) => {
         enable_sig: enableSig,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (postErr || !post) return c.text("Failed to create post", 500);
 
@@ -409,7 +409,7 @@ posting.post("/posting", async (c) => {
           poll_length: pollLengthDays > 0 ? `${pollLengthDays} days` : null,
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (poll) {
         for (let i = 0; i < pollOptionTexts.length; i++) {
@@ -448,7 +448,7 @@ posting.post("/posting", async (c) => {
         enable_sig: enableSig,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (postErr || !post) return c.text("Failed to create post", 500);
 
@@ -466,7 +466,7 @@ posting.post("/posting", async (c) => {
       .from("topics")
       .select("topic_replies")
       .eq("id", topicId)
-      .single();
+      .maybeSingle();
     const replyCount = (updatedTopic?.topic_replies ?? 0) + 1;
 
     const postsPerPage = 15;
@@ -491,7 +491,7 @@ posting.post("/posting", async (c) => {
       .from("posts")
       .select("poster_id")
       .eq("id", postId)
-      .single();
+      .maybeSingle();
 
     if (!existingPost) return c.text("Post not found", 404);
     if (existingPost.poster_id !== user.id && !isModOrAdmin(user)) {
@@ -504,7 +504,7 @@ posting.post("/posting", async (c) => {
       .from("posts")
       .select("post_edit_count")
       .eq("id", postId)
-      .single();
+      .maybeSingle();
 
     await adminDb
       .from("posts")
@@ -530,7 +530,7 @@ posting.post("/posting", async (c) => {
         .from("posts")
         .select("topic_id, topics!posts_topic_id_fkey(topic_first_post_id)")
         .eq("id", postId)
-        .single();
+        .maybeSingle();
       if (editedPost?.topics?.topic_first_post_id === postId) {
         await adminDb.from("topics").update({ topic_type: topicType }).eq("id", editedPost.topic_id);
       }
@@ -541,7 +541,7 @@ posting.post("/posting", async (c) => {
       .from("posts")
       .select("topic_id")
       .eq("id", postId)
-      .single();
+      .maybeSingle();
 
     const editViewUrl = `/viewtopic/${post?.topic_id ?? topicId}#${postId}`;
     return c.html(renderMessagePage({
@@ -560,7 +560,7 @@ posting.post("/posting", async (c) => {
       .from("posts")
       .select("*, topics!posts_topic_id_fkey(topic_first_post_id, forum_id)")
       .eq("id", deletePostId)
-      .single();
+      .maybeSingle();
 
     if (!post) return c.text("Post not found", 404);
     if (post.poster_id !== user.id && !isModOrAdmin(user)) {
@@ -618,7 +618,7 @@ posting.post("/posting", async (c) => {
         .eq("topic_id", post.topic_id)
         .order("post_time", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       await adminDb
         .from("topics")

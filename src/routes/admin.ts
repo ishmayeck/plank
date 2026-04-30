@@ -454,7 +454,7 @@ admin.post("/admin/forums", async (c) => {
       .select("cat_order")
       .order("cat_order", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     await adminDb.from("categories").insert({
       cat_title: String(body.categoryname),
@@ -476,7 +476,7 @@ admin.post("/admin/forums", async (c) => {
           .eq("cat_id", catId)
           .order("forum_order", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         await adminDb.from("forums").insert({
           cat_id: catId,
@@ -515,7 +515,7 @@ admin.get("/admin/forum-action", async (c) => {
       .from("categories")
       .select("cat_order")
       .eq("id", catId)
-      .single();
+      .maybeSingle();
     if (!cat) return c.redirect("/admin/forums");
 
     const newOrder = dir === "up" ? cat.cat_order - 15 : cat.cat_order + 15;
@@ -533,7 +533,7 @@ admin.get("/admin/forum-action", async (c) => {
       .from("forums")
       .select("forum_order, cat_id")
       .eq("id", forumId)
-      .single();
+      .maybeSingle();
     if (!forum) return c.redirect("/admin/forums");
 
     const newOrder = dir === "up" ? forum.forum_order - 15 : forum.forum_order + 15;
@@ -673,7 +673,7 @@ async function resyncForum(adminDb: any, forumId: number) {
     .eq("forum_id", forumId)
     .order("post_time", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   await adminDb
     .from("forums")
@@ -701,7 +701,7 @@ admin.get("/admin/users", async (c) => {
       .from("profiles")
       .select("*")
       .eq("username", username)
-      .single();
+      .maybeSingle();
 
     if (!profile) return c.text("User not found", 404);
 
@@ -889,7 +889,7 @@ admin.post("/admin/bans", async (c) => {
       .from("profiles")
       .select("id")
       .eq("username", username)
-      .single();
+      .maybeSingle();
     if (profile) {
       await adminDb.from("banlist").insert({
         ban_userid: profile.id,

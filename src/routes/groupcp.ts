@@ -143,7 +143,7 @@ async function renderGroupInfo(c: any, groupId: number) {
     .from("groups")
     .select("*, moderator:profiles!groups_group_moderator_fkey(id, username, user_posts, user_from)")
     .eq("id", groupId)
-    .single();
+    .maybeSingle();
 
   if (!group) return c.text("Group not found", 404);
 
@@ -154,7 +154,7 @@ async function renderGroupInfo(c: any, groupId: number) {
       .select("user_pending")
       .eq("group_id", groupId)
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
     if (!membership && !isModOrAdmin(user)) {
       return c.text("Group not found", 404);
     }
@@ -166,7 +166,7 @@ async function renderGroupInfo(c: any, groupId: number) {
     .select("user_pending")
     .eq("group_id", groupId)
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   const isMember = membership && !membership.user_pending;
   const isPending = membership && membership.user_pending;
@@ -385,7 +385,7 @@ groupcp.post("/groupcp", async (c) => {
     .from("groups")
     .select("id, group_type, group_moderator")
     .eq("id", groupId)
-    .single();
+    .maybeSingle();
 
   if (!group) return c.text("Group not found", 404);
 
@@ -480,7 +480,7 @@ groupcp.post("/groupcp", async (c) => {
         .from("profiles")
         .select("id")
         .eq("username", username)
-        .single();
+        .maybeSingle();
       if (profile) {
         await adminDb.from("user_group").upsert({
           group_id: groupId,

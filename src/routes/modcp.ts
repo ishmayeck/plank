@@ -83,7 +83,7 @@ modcp.get("/modcp", async (c) => {
     .from("forums")
     .select("id, forum_name")
     .eq("id", forumId)
-    .single();
+    .maybeSingle();
 
   if (!forum) return c.text("Forum not found", 404);
 
@@ -360,7 +360,7 @@ async function handleMoveConfirm(
         .from("topics")
         .select("topic_title, topic_poster, topic_time, topic_vote, topic_views, topic_replies, topic_first_post_id, topic_last_post_id")
         .eq("id", topicId)
-        .single();
+        .maybeSingle();
 
       if (original) {
         // Create shadow topic pointing to the moved topic
@@ -426,7 +426,7 @@ modcp.get("/modcp/split", async (c) => {
     .from("topics")
     .select("*, forums(id, forum_name)")
     .eq("id", topicId)
-    .single();
+    .maybeSingle();
 
   if (!topic) return c.text("Topic not found", 404);
 
@@ -519,7 +519,7 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
     .from("topics")
     .select("forum_id, topic_poster")
     .eq("id", topicId)
-    .single();
+    .maybeSingle();
 
   if (!originalTopic) return c.text("Topic not found", 404);
 
@@ -587,7 +587,7 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
       topic_poster: originalTopic.topic_poster,
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (!newTopic) return c.text("Failed to create split topic", 500);
 
@@ -693,7 +693,7 @@ modcp.get("/modcp/ip", async (c) => {
     .from("posts")
     .select("id, poster_id, poster_ip, topic_id")
     .eq("id", postId)
-    .single();
+    .maybeSingle();
 
   if (!post) return c.text("Post not found", 404);
 

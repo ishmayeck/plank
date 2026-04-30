@@ -71,7 +71,7 @@ auth.post("/login", async (c) => {
     .from("profiles")
     .select("id")
     .eq("username", username)
-    .single();
+    .maybeSingle();
 
   if (!profile) {
     // User not found — render login with error
@@ -194,7 +194,7 @@ auth.post("/register", async (c) => {
     .from("profiles")
     .select("id")
     .eq("username", username)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     return c.html(renderRegisterPage(c, "This username is already taken.", { username, email }, avatarConfig));

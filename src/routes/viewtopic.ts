@@ -24,7 +24,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     .from("topics")
     .select("*, forums(forum_name)")
     .eq("id", topicId)
-    .single();
+    .maybeSingle();
 
   if (topicError || !topic) {
     return c.text("Topic not found", 404);
@@ -90,6 +90,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   );
 
   // Get prev/next topic IDs
+  // First/last topic in a forum has no neighbour — 0 rows is normal.
   const { data: prevTopic } = await supabase
     .from("topics")
     .select("id")
@@ -97,7 +98,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     .lt("topic_last_post_id", topic.topic_last_post_id ?? 0)
     .order("topic_last_post_id", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   const { data: nextTopic } = await supabase
     .from("topics")
@@ -106,7 +107,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     .gt("topic_last_post_id", topic.topic_last_post_id ?? 0)
     .order("topic_last_post_id", { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   // Render poll if topic has one
   const showViewResults = c.req.query("poll_results") === "1";

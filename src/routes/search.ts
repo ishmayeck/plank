@@ -470,7 +470,7 @@ async function handleNewPosts(c: any) {
     .from("profiles")
     .select("user_lastvisit")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
   const since = profile?.user_lastvisit ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
