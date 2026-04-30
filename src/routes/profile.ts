@@ -1,9 +1,8 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
-import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
+import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
 import { loginRedirect } from "./auth.js";
 
 const MEMBERS_PER_PAGE = 25;
@@ -149,10 +148,7 @@ profile.post("/profile", async (c) => {
 
   const body = await c.req.parseBody();
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   // Handle avatar upload
   let avatarUrl: string | null = null;

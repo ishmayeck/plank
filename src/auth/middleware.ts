@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "../db/client.js";
 
 export interface AuthUser {
   id: string;
@@ -91,10 +92,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     const clientIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
       ?? c.req.header("x-real-ip")
       ?? null;
-    const adminDb = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminDb = getSupabaseAdmin();
     // Use access token prefix as session ID for logged-in users, or a cookie-based guest ID
     const sessionId = accessToken?.slice(0, 32) ?? getCookie(c, "plank-sid") ?? crypto.randomUUID();
     if (!accessToken && !getCookie(c, "plank-sid")) {

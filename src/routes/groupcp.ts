@@ -1,16 +1,9 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
 import { loginRedirect } from "./auth.js";
 
 const groupcp = new Hono();
-
-function getAdminDb() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 // ─── Group List (no group selected) ───────────────────────────
 
@@ -27,7 +20,7 @@ groupcp.get("/groupcp", async (c) => {
   if (!user) return c.redirect(loginRedirect(c));
 
   const supabase = c.get("supabase");
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Get groups user belongs to
   const { data: memberGroups } = await adminDb
@@ -140,7 +133,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   if (!user) return c.redirect(loginRedirect(c));
 
   const supabase = c.get("supabase");
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   const { data: group } = await adminDb
     .from("groups")
@@ -383,7 +376,7 @@ groupcp.post("/groupcp", async (c) => {
 
   if (!groupId) return c.redirect("/groupcp");
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Verify group exists
   const { data: group } = await adminDb

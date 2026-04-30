@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { escapeRegex } from "./escape.js";
 
 export interface Smiley {
   code: string;
@@ -50,8 +51,7 @@ export function replaceSmilies(
   );
 
   for (const smiley of sorted) {
-    const escaped = smiley.code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(escaped, "g");
+    const regex = new RegExp(escapeRegex(smiley.code), "g");
     text = text.replace(
       regex,
       `<img src="${imagePath}/${smiley.smile_url}" alt="${smiley.emoticon}" title="${smiley.emoticon}" border="0" />`

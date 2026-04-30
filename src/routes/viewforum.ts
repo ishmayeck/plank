@@ -1,11 +1,7 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, formatUsernameLink } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
-
-function getAdminDb() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
 
 const TOPICS_PER_PAGE = 25;
 const POSTS_PER_PAGE = 15;
@@ -104,7 +100,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     : "None";
 
   // Users browsing this forum (active sessions on this page in last 5 minutes)
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const { data: browsingSessions } = await adminDb
     .from("sessions")

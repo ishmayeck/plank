@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "../db/client.js";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
@@ -162,10 +162,7 @@ async function handleResults(c: any, params: SearchParams) {
   const forumId = parseInt(c.req.query("forum_id") ?? "0", 10);
   const searchTime = parseInt(c.req.query("search_time") ?? "0", 10);
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   const offset = (page - 1) * RESULTS_PER_PAGE;
 
@@ -473,10 +470,7 @@ async function handleNewPosts(c: any) {
   const page = parseInt(c.req.query("page") ?? "1", 10);
 
   // Find posts made since user's last visit
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   const { data: profile } = await adminDb
     .from("profiles")
@@ -581,10 +575,7 @@ async function handleUnanswered(c: any) {
   const supabase = c.get("supabase");
   const page = parseInt(c.req.query("page") ?? "1", 10);
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   const offset = (page - 1) * RESULTS_PER_PAGE;
   const { data: topics, count } = await adminDb

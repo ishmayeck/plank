@@ -1,18 +1,12 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { Template } from "../template/engine.js";
+import { getSupabaseAdmin } from "../db/client.js";
+import { escapeHtml } from "../lib/escape.js";
 import path from "path";
 
 const THEME_DIR = path.join(process.cwd(), "themes", "Solaris");
 
 const admin = new Hono();
-
-function getAdminDb() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 function isAdmin(user: any): boolean {
   return user && user.userLevel === 1;
@@ -44,7 +38,7 @@ admin.get("/admin", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Gather stats
   const { count: postCount } = await adminDb
@@ -106,7 +100,7 @@ admin.get("/admin/config", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   const { data: configs } = await adminDb.from("config").select("*");
 
   const cfg: Record<string, string> = {};
@@ -346,7 +340,7 @@ admin.post("/admin/config", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // List of config fields we accept
   const configFields = [
@@ -384,7 +378,7 @@ admin.get("/admin/forums", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   const { data: categories } = await adminDb
     .from("categories")
@@ -452,7 +446,7 @@ admin.post("/admin/forums", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Create category
   if (body.addcategory && body.categoryname) {
@@ -511,7 +505,7 @@ admin.get("/admin/forum-action", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const mode = c.req.query("mode");
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   if (mode === "cat_order") {
     const catId = parseInt(c.req.query("c") ?? "0", 10);
@@ -586,7 +580,7 @@ admin.post("/admin/editcat", async (c) => {
   const catTitle = (body.cat_title as string)?.trim();
 
   if (catId && catTitle) {
-    const adminDb = getAdminDb();
+    const adminDb = getSupabaseAdmin();
     await adminDb.from("categories").update({ cat_title: catTitle }).eq("id", catId);
   }
 
@@ -603,7 +597,7 @@ admin.post("/admin/editforum", async (c) => {
 
   if (!forumId) return c.redirect("/admin/forums");
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   const updates: Record<string, any> = {};
 
   if (body.forum_name) updates.forum_name = String(body.forum_name).trim();
@@ -700,7 +694,7 @@ admin.get("/admin/users", async (c) => {
 
   const mode = c.req.query("mode");
   const username = c.req.query("username");
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // If editing a specific user
   if (mode === "edit" && username) {
@@ -778,7 +772,7 @@ admin.post("/admin/users", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Search for user
   if (body.submituser && body.username) {
@@ -819,7 +813,7 @@ admin.get("/admin/bans", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Get current bans
   const { data: bans } = await adminDb
@@ -887,7 +881,7 @@ admin.post("/admin/bans", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Ban user
   if (body.username && (body.username as string).trim()) {
@@ -942,7 +936,7 @@ admin.get("/admin/ranks", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   const { data: ranks } = await adminDb
     .from("ranks")
     .select("*")
@@ -985,7 +979,7 @@ admin.post("/admin/ranks", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   if (body.add || body.save) {
     const rankTitle = (body.rank_title as string)?.trim();
@@ -1018,7 +1012,7 @@ admin.get("/admin/smilies", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   const { data: smilies } = await adminDb
     .from("smilies")
     .select("*")
@@ -1065,7 +1059,7 @@ admin.post("/admin/smilies", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   if (body.add || body.save) {
     const code = (body.code as string)?.trim();
@@ -1095,7 +1089,7 @@ admin.get("/admin/words", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   const { data: words } = await adminDb
     .from("word_censors")
     .select("*")
@@ -1138,7 +1132,7 @@ admin.post("/admin/words", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const body = await c.req.parseBody();
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   if (body.add || body.save) {
     const word = (body.word as string)?.trim();
@@ -1178,7 +1172,7 @@ admin.get("/admin/word-action", async (c) => {
   const id = parseInt(c.req.query("id") ?? "0", 10);
   if (!id) return c.redirect("/admin/words");
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   if (mode === "delete") {
     await adminDb.from("word_censors").delete().eq("id", id);
   }
@@ -1193,7 +1187,7 @@ admin.get("/admin/smiley-action", async (c) => {
   const id = parseInt(c.req.query("id") ?? "0", 10);
   if (!id) return c.redirect("/admin/smilies");
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   if (mode === "delete") {
     await adminDb.from("smilies").delete().eq("id", id);
   }
@@ -1208,19 +1202,12 @@ admin.get("/admin/rank-action", async (c) => {
   const id = parseInt(c.req.query("id") ?? "0", 10);
   if (!id) return c.redirect("/admin/ranks");
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
   if (mode === "delete") {
     await adminDb.from("ranks").delete().eq("id", id);
   }
   return c.redirect("/admin/ranks");
 });
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 export default admin;

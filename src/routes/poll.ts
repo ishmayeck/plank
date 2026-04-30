@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { renderMessagePage } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
+import { escapeHtml } from "../lib/escape.js";
 import { loginRedirect } from "./auth.js";
 const poll = new Hono();
 
@@ -18,10 +19,7 @@ poll.post("/poll", async (c) => {
     return c.text("Invalid vote", 400);
   }
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   // Get the poll for this topic
   const { data: pollQ } = await adminDb
@@ -100,10 +98,7 @@ export async function renderPollForTopic(
   userId: string | null,
   showViewResults: boolean
 ): Promise<string> {
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   const { data: pollQ } = await adminDb
     .from("poll_questions")
@@ -208,14 +203,6 @@ function renderPollResults(
   html += `</table><br clear="all" /></td></tr>`;
 
   return html;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function parsePgInterval(interval: string): number | null {

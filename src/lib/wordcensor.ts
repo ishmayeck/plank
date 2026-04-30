@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { escapeRegex } from "./escape.js";
 
 export interface WordCensor {
   word: string;
@@ -33,9 +34,7 @@ export function applyCensors(
 ): string {
   for (const censor of censors) {
     // Convert phpBB-style wildcards to regex
-    const pattern = censor.word
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\\\*/g, "\\S*");
+    const pattern = escapeRegex(censor.word).replace(/\\\*/g, "\\S*");
     const regex = new RegExp(`\\b${pattern}\\b`, "gi");
     text = text.replace(regex, censor.replacement);
   }

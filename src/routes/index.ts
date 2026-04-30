@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate, formatUsernameLink, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
 
 const index = new Hono();
 
@@ -9,10 +9,7 @@ index.get("/", async (c) => {
   const supabase = c.get("supabase");
 
   // Use admin client for session queries (sessions may not be readable via anon)
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   const tpl = createPageTemplate({
     user: user ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } : null,

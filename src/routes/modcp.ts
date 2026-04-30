@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 
 const modcp = new Hono();
@@ -9,11 +9,18 @@ function isMod(user: any): boolean {
   return user && user.userLevel >= 1; // 1=admin, 2=mod
 }
 
-function getAdminDb() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+function forbiddenPage(user: any): string {
+  return renderMessagePage({
+    ctx: {
+      user: user
+        ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
+        : undefined,
+    },
+    title: "Not Authorised",
+    messageHtml:
+      'You are not a moderator of this forum.<br /><br />' +
+      'Click <a href="/">Here</a> to return to the Index',
+  });
 }
 
 // ─── ModCP Main Page ──────────────────────────────────────────
@@ -21,7 +28,7 @@ function getAdminDb() {
 
 modcp.get("/modcp", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.text("Forbidden", 403);
+  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
 
   const mode = c.req.query("mode") ?? "";
   const forumId = parseInt(c.req.query("f") ?? "0", 10);
@@ -46,7 +53,7 @@ modcp.get("/modcp", async (c) => {
     }
 
     if (mode === "lock") {
-      const adminDb = getAdminDb();
+      const adminDb = getSupabaseAdmin();
       await adminDb.from("topics").update({ topic_status: 1 }).eq("id", topicId).eq("forum_id", forumId);
       const msg = `The selected topics have been locked.<br /><br />`
         + `Click <a href="/viewtopic/${topicId}">Here</a> to return to the topic`
@@ -55,7 +62,7 @@ modcp.get("/modcp", async (c) => {
     }
 
     if (mode === "unlock") {
-      const adminDb = getAdminDb();
+      const adminDb = getSupabaseAdmin();
       await adminDb.from("topics").update({ topic_status: 0 }).eq("id", topicId).eq("forum_id", forumId);
       const msg = `The selected topics have been unlocked.<br /><br />`
         + `Click <a href="/viewtopic/${topicId}">Here</a> to return to the topic`
@@ -151,7 +158,7 @@ modcp.get("/modcp", async (c) => {
 
 modcp.post("/modcp", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.text("Forbidden", 403);
+  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
 
   const body = await c.req.parseBody();
   const forumId = parseInt(body.f as string, 10);
@@ -181,7 +188,7 @@ modcp.post("/modcp", async (c) => {
       return c.redirect(singleTopicId ? `/viewtopic/${singleTopicId}` : `/modcp?f=${forumId}`);
     }
     if (body.confirm && topicIds.length > 0) {
-      const adminDb = getAdminDb();
+      const adminDb = getSupabaseAdmin();
       for (const tid of topicIds) {
         await adminDb.from("topics").delete().eq("id", tid);
       }
@@ -202,7 +209,7 @@ modcp.post("/modcp", async (c) => {
     return c.redirect(`/modcp?f=${forumId}`);
   }
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   const userCtx = { user: { id: user!.id, username: user!.username, unreadPms: user!.unreadPms, userLevel: user!.userLevel } };
   const modcpUrl = `/modcp?f=${forumId}`;
@@ -344,7 +351,7 @@ async function handleMoveConfirm(
   }
 
   const leaveShadow = !!body.move_leave_shadow;
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   for (const topicId of topicIds) {
     if (leaveShadow) {
@@ -408,7 +415,7 @@ async function handleMoveConfirm(
 
 modcp.get("/modcp/split", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.text("Forbidden", 403);
+  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
 
   const topicId = parseInt(c.req.query("t") ?? "0", 10);
   if (!topicId) return c.text("Topic not specified", 400);
@@ -505,7 +512,7 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
 
   if (!topicId || !newForumId) return c.text("Invalid split request", 400);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Get original topic
   const { data: originalTopic } = await adminDb
@@ -669,12 +676,12 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
 
 modcp.get("/modcp/ip", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.text("Forbidden", 403);
+  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
 
   const postId = parseInt(c.req.query("p") ?? "0", 10);
   if (!postId) return c.text("Post not specified", 400);
 
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Get the post's IP
   const { data: post } = await adminDb

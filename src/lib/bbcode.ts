@@ -1,3 +1,5 @@
+import { escapeHtml } from "./escape.js";
+
 /**
  * phpBB2-compatible BBCode parser.
  *
@@ -136,11 +138,3 @@ function parseListItems(content: string): string {
     .join("");
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}

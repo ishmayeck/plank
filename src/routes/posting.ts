@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate, fetchAndRenderJumpbox, renderMessagePage } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { Template } from "../template/engine.js";
@@ -286,10 +286,7 @@ posting.post("/posting", async (c) => {
     }));
   }
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   // Pre-render BBCode to HTML
   const messageHtml = enableBBCode ? parseBBCode(message) : message;
@@ -916,7 +913,7 @@ function buildTopicTypeToggle(currentType: number = 0): string {
 }
 
 async function renderTopicReview(topicId: number, smilies: Smiley[], inline: boolean): Promise<string> {
-  const adminDb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const adminDb = getSupabaseAdmin();
 
   const { data: posts } = await adminDb
     .from("posts")

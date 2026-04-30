@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "../db/client.js";
 import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
@@ -175,10 +175,7 @@ async function handleReadPM(c: any) {
   const supabase = c.get("supabase");
   const pmId = parseInt(c.req.query("p") ?? "0", 10);
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   const { data: pm } = await adminDb
     .from("privmsgs")
@@ -315,10 +312,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   const replyPmId = c.req.query("p");
   const isQuote = c.req.query("quote") === "1";
   if (replyPmId && !overrides) {
-    const adminDb = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminDb = getSupabaseAdmin();
     const { data: pm } = await adminDb
       .from("privmsgs")
       .select(
@@ -471,10 +465,7 @@ privmsg.post("/privmsg", async (c) => {
   const body = await c.req.parseBody();
   const mode = body.mode as string;
 
-  const adminDb = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminDb = getSupabaseAdmin();
 
   // Send new PM
   if (mode === "post") {

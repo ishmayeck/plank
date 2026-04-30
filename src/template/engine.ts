@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { escapeRegex } from "../lib/escape.js";
 
 /**
  * phpBB2-compatible template engine.
@@ -172,11 +173,11 @@ export class Template {
     startPos: number
   ): { innerEnd: number; outerEnd: number } | -1 {
     const beginPattern = new RegExp(
-      `<!--\\s*BEGIN\\s+${this.escapeRegex(blockName)}\\s*-->`,
+      `<!--\\s*BEGIN\\s+${escapeRegex(blockName)}\\s*-->`,
       "g"
     );
     const endPattern = new RegExp(
-      `<!--\\s*END\\s+${this.escapeRegex(blockName)}\\s*-->`,
+      `<!--\\s*END\\s+${escapeRegex(blockName)}\\s*-->`,
       "g"
     );
 
@@ -208,10 +209,6 @@ export class Template {
     }
 
     return -1;
-  }
-
-  private escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   // ─── Renderer ───────────────────────────────────────────────────

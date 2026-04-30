@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
-import { getAvatarConfig, type AvatarConfig } from "../db/client.js";
+import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
 
 const auth = new Hono();
 
@@ -61,10 +60,7 @@ auth.post("/login", async (c) => {
   }
 
   // Look up the user's email by username
-  const adminSupabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminSupabase = getSupabaseAdmin();
 
   const { data: profile } = await adminSupabase
     .from("profiles")
@@ -184,10 +180,7 @@ auth.post("/register", async (c) => {
     return c.html(renderRegisterPage("Username must be between 3 and 25 characters.", { username, email }, avatarConfig));
   }
 
-  const adminSupabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminSupabase = getSupabaseAdmin();
 
   // Check if username is taken
   const { data: existing } = await adminSupabase

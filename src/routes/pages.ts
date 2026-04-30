@@ -1,15 +1,8 @@
 import { Hono } from "hono";
-import { createClient } from "@supabase/supabase-js";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
+import { getSupabaseAdmin } from "../db/client.js";
 
 const pages = new Hono();
-
-function getAdminDb() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 // ─── FAQ Page ─────────────────────────────────────────────────
 
@@ -156,7 +149,7 @@ pages.get("/faq", async (c) => {
 pages.get("/viewonline", async (c) => {
   const user = c.get("user");
   const supabase = c.get("supabase");
-  const adminDb = getAdminDb();
+  const adminDb = getSupabaseAdmin();
 
   // Get recent sessions (last 5 minutes)
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
