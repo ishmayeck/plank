@@ -169,31 +169,24 @@ index.get("/", async (c) => {
     tpl.assignBlockVars("switch_user_logged_out.switch_allow_autologin", {});
   }
 
-  // Fetch last post for each forum.
-  // Try the denormalized forum_last_post_id first; fall back to querying
-  // the most recent post per forum so the column works even when the
-  // denormalized field hasn't been maintained.
+  // Fetch last post for each forum via the denormalized
+  // forum_last_post_id pointer (maintained by the triggers in
+  // 20260430000001_atomic_counters.sql). One batched query, no N+1.
   const forumIds = (forums ?? []).map((f: any) => f.id as number);
-  let lastPostMap: Record<number, { time: string; username: string; userId: string; topicId: number; postId: number }> = {};
+  const lastPostMap: Record<number, { time: string; username: string; userId: string; topicId: number; postId: number }> = {};
 
-  if (forumIds.length > 0) {
-    // First try: batch-fetch by forum_last_post_id for forums that have it
-    const knownIds = (forums ?? [])
-      .map((f: any) => f.forum_last_post_id)
-      .filter((id: any) => id && id > 0);
+  const knownIds = (forums ?? [])
+    .map((f: any) => f.forum_last_post_id)
+    .filter((id: any) => id && id > 0);
 
-    let postById: Record<number, any> = {};
-    if (knownIds.length > 0) {
-      const { data: knownPosts } = await supabase
-        .from("posts")
-        .select("id, forum_id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
-        .in("id", knownIds);
-      if (knownPosts) {
-        for (const p of knownPosts) postById[p.id] = p;
-      }
-    }
+  if (knownIds.length > 0) {
+    const { data: knownPosts } = await supabase
+      .from("posts")
+      .select("id, forum_id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
+      .in("id", knownIds);
+    const postById: Record<number, any> = {};
+    for (const p of knownPosts ?? []) postById[p.id] = p;
 
-    // Build map from denormalized IDs
     for (const f of forums ?? []) {
       const p = f.forum_last_post_id ? postById[f.forum_last_post_id] : null;
       if (p) {
@@ -205,30 +198,6 @@ index.get("/", async (c) => {
           topicId: p.topic_id,
           postId: p.id,
         };
-      }
-    }
-
-    // Second pass: for any forum still missing, query the latest post directly
-    const missingForumIds = forumIds.filter((id) => !lastPostMap[id]);
-    if (missingForumIds.length > 0) {
-      for (const fid of missingForumIds) {
-        const { data: latest } = await supabase
-          .from("posts")
-          .select("id, post_time, poster_id, topic_id, poster:profiles!posts_poster_id_fkey(id, username)")
-          .eq("forum_id", fid)
-          .order("post_time", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latest) {
-          const poster = latest.poster as any;
-          lastPostMap[fid] = {
-            time: latest.post_time,
-            username: poster?.username ?? "Guest",
-            userId: poster?.id ?? latest.poster_id,
-            topicId: latest.topic_id,
-            postId: latest.id,
-          };
-        }
       }
     }
   }
