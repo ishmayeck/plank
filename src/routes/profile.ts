@@ -5,7 +5,9 @@ import { generatePagination } from "../lib/pagination.js";
 import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 import { loginRedirect } from "./auth.js";
+import type { Context } from "hono";
 
 const MEMBERS_PER_PAGE = 25;
 
@@ -143,7 +145,7 @@ profile.get("/profile", async (c) => {
   if (!profileData) return c.text("Profile not found", 404);
 
   const avatarConfig = await getAvatarConfig(supabase);
-  return c.html(renderProfileEditForm({ user, profileData, avatarConfig }));
+  return c.html(renderProfileEditForm({ c, user, profileData, avatarConfig }));
 });
 
 profile.post("/profile", async (c) => {
@@ -199,6 +201,7 @@ profile.post("/profile", async (c) => {
         .single();
       return c.html(
         renderProfileEditForm({
+          c,
           user,
           profileData: profileData!,
           error: avatarError,
@@ -241,6 +244,7 @@ profile.post("/profile", async (c) => {
       const avatarConfig = await getAvatarConfig(adminDb);
       return c.html(
         renderProfileEditForm({
+          c,
           user,
           profileData: profileData!,
           error: "Passwords do not match",
@@ -260,6 +264,7 @@ profile.post("/profile", async (c) => {
       const avatarConfig = await getAvatarConfig(adminDb);
       return c.html(
         renderProfileEditForm({
+          c,
           user,
           profileData: profileData!,
           error: `Password change failed: ${pwError.message}`,
@@ -426,6 +431,7 @@ function getRank(
 }
 
 interface ProfileEditOpts {
+  c: Context;
   user: { id: string; username: string; unreadPms: number };
   profileData: any;
   error?: string;
@@ -556,7 +562,7 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     AVATAR_SIZE: String(maxFilesize),
     L_SUBMIT: "Submit",
     L_RESET: "Reset",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(opts.c),
   });
 
   // Enable edit profile switches

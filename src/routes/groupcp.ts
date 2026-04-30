@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "../db/client.js";
 import { isAdmin, isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 import { loginRedirect } from "./auth.js";
 
 const groupcp = new Hono();
@@ -66,7 +67,7 @@ groupcp.get("/groupcp", async (c) => {
     U_INDEX: "/",
     L_INDEX: "Index",
     S_USERGROUP_ACTION: "/groupcp",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: await fetchAndRenderJumpbox(supabase),
 
@@ -229,7 +230,7 @@ async function renderGroupInfo(c: any, groupId: number) {
     GROUP_DESC: group.group_description ?? "",
     GROUP_DETAILS: groupDetails,
     S_GROUPCP_ACTION: "/groupcp",
-    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="g" value="${groupId}" />`),
+    S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="g" value="${groupId}" />`),
     S_GROUP_OPEN_TYPE: "0",
     S_GROUP_CLOSED_TYPE: "1",
     S_GROUP_HIDDEN_TYPE: "2",

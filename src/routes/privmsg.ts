@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
@@ -127,7 +128,7 @@ privmsg.get("/privmsg", async (c) => {
     L_MARK_ALL: "Mark all",
     L_UNMARK_ALL: "Unmark all",
 
-    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="folder" value="${escapeHtml(folder)}" />`),
+    S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="folder" value="${escapeHtml(folder)}" />`),
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
@@ -259,7 +260,7 @@ async function handleReadPM(c: any) {
     EDIT_PM_IMG: "",
 
     S_PRIVMSGS_ACTION: `/privmsg?mode=read&p=${pmId}`,
-    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="pm_id" value="${pmId}" />`),
+    S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="pm_id" value="${pmId}" />`),
     L_SAVE_MSG: "Save Message",
     L_DELETE_MSG: "Delete Message",
 
@@ -359,7 +360,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     L_PREVIEW: "Preview",
     L_SUBMIT: "Submit",
     L_EMPTY_MESSAGE: "You must enter a message when posting.",
-    S_HIDDEN_FORM_FIELDS: markup('<input type="hidden" name="mode" value="post" />'),
+    S_HIDDEN_FORM_FIELDS: formHiddenFields(c, '<input type="hidden" name="mode" value="post" />'),
     SUBJECT: subject,
     MESSAGE: message,
     S_TIMEZONE: "All times are GMT",

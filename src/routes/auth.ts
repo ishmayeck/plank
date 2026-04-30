@@ -4,6 +4,8 @@ import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js
 import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
+import type { Context } from "hono";
 
 const auth = new Hono();
 
@@ -37,9 +39,10 @@ auth.get("/login", (c) => {
     L_SEND_PASSWORD: "I forgot my password",
     U_SEND_PASSWORD: "/forgot-password",
     USERNAME: "",
-    S_HIDDEN_FIELDS: redirect
-      ? markup(`<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />`)
-      : markup(""),
+    S_HIDDEN_FIELDS: formHiddenFields(
+      c,
+      redirect ? `<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />` : ""
+    ),
   });
   tpl.assignBlockVars("switch_allow_autologin", {});
 
@@ -86,9 +89,10 @@ auth.post("/login", async (c) => {
       L_SEND_PASSWORD: "I forgot my password",
       U_SEND_PASSWORD: "/forgot-password",
       USERNAME: username,
-      S_HIDDEN_FIELDS: redirect
-        ? `<input type="hidden" name="redirect" value="${redirect}" />`
-        : "",
+      S_HIDDEN_FIELDS: formHiddenFields(
+        c,
+        redirect ? `<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />` : ""
+      ),
     });
     tpl.assignBlockVars("switch_allow_autologin", {});
     return c.html(renderPage(tpl));
@@ -125,9 +129,10 @@ auth.post("/login", async (c) => {
       L_SEND_PASSWORD: "I forgot my password",
       U_SEND_PASSWORD: "/forgot-password",
       USERNAME: username,
-      S_HIDDEN_FIELDS: redirect
-        ? `<input type="hidden" name="redirect" value="${redirect}" />`
-        : "",
+      S_HIDDEN_FIELDS: formHiddenFields(
+        c,
+        redirect ? `<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />` : ""
+      ),
     });
     tpl.assignBlockVars("switch_allow_autologin", {});
     return c.html(renderPage(tpl));
@@ -158,7 +163,7 @@ auth.get("/register", async (c) => {
 
   const supabase = c.get("supabase");
   const avatarConfig = await getAvatarConfig(supabase);
-  return c.html(renderRegisterPage(undefined, undefined, avatarConfig));
+  return c.html(renderRegisterPage(c, undefined, undefined, avatarConfig));
 });
 
 auth.post("/register", async (c) => {
@@ -173,13 +178,13 @@ auth.post("/register", async (c) => {
 
   // Validation
   if (!username || !email || !password) {
-    return c.html(renderRegisterPage("All fields marked with * are required.", { username, email }, avatarConfig));
+    return c.html(renderRegisterPage(c, "All fields marked with * are required.", { username, email }, avatarConfig));
   }
   if (password !== passwordConfirm) {
-    return c.html(renderRegisterPage("Passwords do not match.", { username, email }, avatarConfig));
+    return c.html(renderRegisterPage(c, "Passwords do not match.", { username, email }, avatarConfig));
   }
   if (username.length < 3 || username.length > 25) {
-    return c.html(renderRegisterPage("Username must be between 3 and 25 characters.", { username, email }, avatarConfig));
+    return c.html(renderRegisterPage(c, "Username must be between 3 and 25 characters.", { username, email }, avatarConfig));
   }
 
   const adminSupabase = getSupabaseAdmin();
@@ -192,7 +197,7 @@ auth.post("/register", async (c) => {
     .single();
 
   if (existing) {
-    return c.html(renderRegisterPage("This username is already taken.", { username, email }, avatarConfig));
+    return c.html(renderRegisterPage(c, "This username is already taken.", { username, email }, avatarConfig));
   }
 
   // Create auth user
@@ -203,7 +208,7 @@ auth.post("/register", async (c) => {
   });
 
   if (authError) {
-    return c.html(renderRegisterPage(`Registration failed: ${authError.message}`, { username, email }, avatarConfig));
+    return c.html(renderRegisterPage(c, `Registration failed: ${authError.message}`, { username, email }, avatarConfig));
   }
 
   // Create profile
@@ -215,7 +220,7 @@ auth.post("/register", async (c) => {
   if (profileError) {
     // Rollback: delete the auth user
     await adminSupabase.auth.admin.deleteUser(authData.user.id);
-    return c.html(renderRegisterPage(`Registration failed: ${profileError.message}`, { username, email }, avatarConfig));
+    return c.html(renderRegisterPage(c, `Registration failed: ${profileError.message}`, { username, email }, avatarConfig));
   }
 
   // Auto sign in
@@ -256,6 +261,7 @@ auth.get("/logout", async (c) => {
 // ─── Helpers ───────────────────────────────────────────────────
 
 function renderRegisterPage(
+  c: Context,
   error?: string,
   values?: { username?: string; email?: string },
   avatarConfig?: AvatarConfig
@@ -373,7 +379,7 @@ function renderRegisterPage(
     ALWAYS_ALLOW_HTML_NO: markup('checked="checked"'),
     ALWAYS_ALLOW_SMILIES_YES: markup('checked="checked"'),
     ALWAYS_ALLOW_SMILIES_NO: "",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
     CONFIRM_IMG: "",
   });
 

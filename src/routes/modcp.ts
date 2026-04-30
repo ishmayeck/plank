@@ -5,6 +5,7 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 
 const modcp = new Hono();
 
@@ -118,7 +119,7 @@ modcp.get("/modcp", async (c) => {
     L_LOCK: "Lock",
     L_UNLOCK: "Unlock",
     S_MODCP_ACTION: "/modcp",
-    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="f" value="${forumId}" />`),
+    S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="f" value="${forumId}" />`),
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
     S_TIMEZONE: "All times are GMT",
@@ -319,7 +320,7 @@ async function renderMovePage(
     L_NO: "No",
     S_MODCP_ACTION: "/modcp",
     S_FORUM_SELECT: markup(forumSelect),
-    S_HIDDEN_FIELDS: markup(hiddenFields),
+    S_HIDDEN_FIELDS: formHiddenFields(c, hiddenFields),
   });
 
   return c.html(renderPage(tpl));
@@ -480,7 +481,7 @@ modcp.get("/modcp/split", async (c) => {
     L_POST_SUBJECT: "Post subject:",
     S_SPLIT_ACTION: "/modcp",
     S_FORUM_SELECT: markup(forumSelect),
-    S_HIDDEN_FIELDS: markup(`<input type="hidden" name="topic_id" value="${topicId}" />`),
+    S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="topic_id" value="${topicId}" />`),
     S_TIMEZONE: "All times are GMT",
   });
 
@@ -840,6 +841,8 @@ function renderConfirmPage(
   user: any,
   opts: { title: string; message: string; action: string; hiddenFields: Record<string, string> }
 ): string {
+  // c is needed for csrf token; passed by callers
+
   const tpl = createPageTemplate({
     user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
     pageTitle: opts.title,
@@ -858,7 +861,7 @@ function renderConfirmPage(
     L_YES: "Yes",
     L_NO: "No",
     S_CONFIRM_ACTION: opts.action,
-    S_HIDDEN_FIELDS: markup(hiddenHtml),
+    S_HIDDEN_FIELDS: formHiddenFields(c, hiddenHtml),
     U_INDEX: "/",
     L_INDEX: "Index",
   });

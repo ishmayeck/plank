@@ -3,6 +3,7 @@ import { Template } from "../template/engine.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
 import path from "path";
 
@@ -117,7 +118,7 @@ admin.get("/admin/config", async (c) => {
     S_CONFIG_ACTION: "/admin/config",
     L_SUBMIT: "Submit",
     L_RESET: "Reset",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
 
     // General
     L_SERVER_NAME: "Server name",
@@ -713,7 +714,7 @@ admin.get("/admin/users", async (c) => {
       L_LOOK_UP: "Look up",
       L_FIND_USERNAME: "Find a username",
       S_USER_ACTION: "/admin/users",
-      S_HIDDEN_FIELDS: "",
+      S_HIDDEN_FIELDS: formHiddenFields(c),
       U_SEARCH_USER: "/search",
     });
     // Override body with inline edit form
@@ -758,7 +759,7 @@ admin.get("/admin/users", async (c) => {
     L_LOOK_UP: "Look up",
     L_FIND_USERNAME: "Find a username",
     S_USER_ACTION: "/admin/users",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
     U_SEARCH_USER: "/search",
   });
 
@@ -864,7 +865,7 @@ admin.get("/admin/bans", async (c) => {
     L_FIND_USERNAME: "Find a username",
     L_SUBMIT: "Submit",
     L_RESET: "Reset",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
     U_SEARCH_USER: "/search",
     S_UNBAN_USERLIST_SELECT: markup(userUnbanSelect),
     S_UNBAN_IPLIST_SELECT: markup(ipUnbanSelect),
@@ -1031,7 +1032,7 @@ admin.get("/admin/smilies", async (c) => {
     L_SMILEY_ADD: "Add new smiley",
     L_IMPORT_PACK: "Import Pack",
     L_EXPORT_PACK: "Export Pack",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
   });
 
   if (smilies) {
@@ -1105,7 +1106,7 @@ admin.get("/admin/words", async (c) => {
     L_EDIT: "Edit",
     L_DELETE: "Delete",
     L_ADD_WORD: "Add new word",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
   });
 
   if (words) {

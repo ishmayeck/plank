@@ -6,9 +6,11 @@ import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup, type MarkupString } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 import { Template } from "../template/engine.js";
 import { join } from "node:path";
 import { loginRedirect } from "./auth.js";
+import type { Context } from "hono";
 
 const THEME_DIR = join(import.meta.dirname, "..", "..", "themes", "Solaris");
 
@@ -99,6 +101,7 @@ posting.get("/posting", async (c) => {
       return c.text("Forbidden", 403);
     }
     return c.html(renderConfirmPage({
+      c,
       user,
       title: "Information",
       message: "Are you sure you want to delete this post?",
@@ -116,6 +119,7 @@ posting.get("/posting", async (c) => {
     : "";
   const jumpboxHtml = await fetchAndRenderJumpbox(supabase);
   const html = renderPostingForm({
+    c,
     user,
     mode,
     forumId,
@@ -227,6 +231,7 @@ posting.post("/posting", async (c) => {
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
 
     return c.html(renderPostingForm({
+      c,
       user, mode, forumId, topicId, postId,
       forumName: forum?.forum_name ?? "", subject, message,
       postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
@@ -253,6 +258,7 @@ posting.post("/posting", async (c) => {
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
 
     const html = renderPostingForm({
+      c,
       user,
       mode,
       forumId,
@@ -281,6 +287,7 @@ posting.post("/posting", async (c) => {
     const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
     return c.html(renderPostingForm({
+      c,
       user, mode, forumId, topicId, postId,
       forumName: forum?.forum_name ?? "", subject, message,
       postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
@@ -300,6 +307,7 @@ posting.post("/posting", async (c) => {
       const smilies = await loadSmilies(supabase);
       const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).single();
       return c.html(renderPostingForm({
+        c,
         user, mode, forumId, topicId, postId,
         forumName: forum?.forum_name ?? "", subject, message,
         postTitle: "Post a new topic",
@@ -323,6 +331,7 @@ posting.post("/posting", async (c) => {
           if (k.match(/^poll_option_text\[\d+\]$/)) pollOpts.push((v as string) ?? "");
         }
         return c.html(renderPostingForm({
+          c,
           user, mode, forumId, topicId, postId,
           forumName: forum?.forum_name ?? "", subject, message,
           postTitle: "Post a new topic",
@@ -624,6 +633,7 @@ posting.post("/posting", async (c) => {
     // Must confirm before deleting
     if (!body.confirm) {
       return c.html(renderConfirmPage({
+        c,
         user,
         title: "Information",
         message: "Are you sure you want to delete this post?",
@@ -696,6 +706,7 @@ posting.post("/posting", async (c) => {
 // ─── Rendering Helper ──────────────────────────────────────────
 
 interface PostingFormOpts {
+  c: Context;
   user: { id: string; username: string; unreadPms: number; userLevel: number; userSig: string; attachSig: boolean };
   mode: string;
   forumId: number | null;
@@ -725,13 +736,14 @@ function renderPostingForm(opts: PostingFormOpts): string {
 
   tpl.loadFile("body", "posting_body.tpl");
 
-  // Build hidden fields
-  const hiddenFields = markup([
+  // Build hidden fields (CSRF token + mode/forum/topic/post)
+  const hiddenFields = formHiddenFields(
+    opts.c,
     `<input type="hidden" name="mode" value="${escapeHtml(opts.mode)}" />`,
     opts.forumId ? `<input type="hidden" name="forum_id" value="${opts.forumId}" />` : "",
     opts.topicId ? `<input type="hidden" name="topic_id" value="${opts.topicId}" />` : "",
     opts.postId ? `<input type="hidden" name="post_id" value="${opts.postId}" />` : "",
-  ].join(""));
+  );
 
   // Preview box (opts.preview is HTML from parseBBCode + smilies)
   const previewBox = opts.preview
@@ -967,6 +979,7 @@ async function renderTopicReview(topicId: number, smilies: Smiley[], inline: boo
 }
 
 interface ConfirmPageOpts {
+  c: Context;
   user: { id: string; username: string; unreadPms: number; userLevel: number };
   title: string;
   message: string;
@@ -989,7 +1002,7 @@ function renderConfirmPage(opts: ConfirmPageOpts): string {
 
   let hiddenHtml = "";
   for (const [key, val] of Object.entries(opts.hiddenFields)) {
-    hiddenHtml += `<input type="hidden" name="${key}" value="${val}" />`;
+    hiddenHtml += `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(val)}" />`;
   }
 
   tpl.assignVars({
@@ -998,7 +1011,7 @@ function renderConfirmPage(opts: ConfirmPageOpts): string {
     L_YES: "Yes",
     L_NO: "No",
     S_CONFIRM_ACTION: opts.action,
-    S_HIDDEN_FIELDS: hiddenHtml,
+    S_HIDDEN_FIELDS: formHiddenFields(opts.c, hiddenHtml),
     U_INDEX: "/",
     L_INDEX: "Index",
   });

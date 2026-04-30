@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { csrf } from "hono/csrf";
 import { authMiddleware } from "./auth/middleware.js";
+import { csrfTokenMiddleware } from "./lib/csrf.js";
 import authRoutes from "./routes/auth.js";
 import indexRoute from "./routes/index.js";
 import viewforumRoute from "./routes/viewforum.js";
@@ -32,6 +34,19 @@ app.use("/images/smiles/*", serveStatic({ root: "./vendor/phpBB2/" }));
 
 // Serve phpBB2's root-level images (some templates reference images/spacer.gif etc.)
 app.use("/images/*", serveStatic({ root: "./themes/Solaris/" }));
+
+// CSRF defenses (in order: Origin/Referer check, then synchronizer-token check).
+// Tests can bypass with SKIP_CSRF=1 — production must never set this.
+// Checked at request time so a single test file can flip it.
+const honoCsrf = csrf();
+app.use("*", async (c, next) => {
+  if (process.env.SKIP_CSRF === "1") return next();
+  return honoCsrf(c, next);
+});
+app.use("*", async (c, next) => {
+  if (process.env.SKIP_CSRF === "1") return next();
+  return csrfTokenMiddleware(c, next);
+});
 
 // Auth middleware on all routes
 app.use("*", authMiddleware);

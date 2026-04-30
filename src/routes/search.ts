@@ -5,6 +5,7 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { formHiddenFields } from "../lib/csrf.js";
 
 const RESULTS_PER_PAGE = 25;
 
@@ -122,7 +123,7 @@ search.get("/search", async (c) => {
     S_CHARACTER_OPTIONS: markup(charOptions),
     L_CHARACTERS: "characters of posts",
     L_SEARCH: "Search",
-    S_HIDDEN_FIELDS: "",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: await fetchAndRenderJumpbox(supabase),
   });
