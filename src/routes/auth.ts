@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { createPageTemplate, renderPage, renderErrorBox } from "../lib/render.js";
-import { getAvatarConfig, getSupabaseAdmin, type AvatarConfig } from "../db/client.js";
+import { getSupabaseAdmin } from "../db/client.js";
+import { getAvatarConfig, type AvatarConfig } from "../lib/avatar.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
+import { ACCESS_COOKIE_OPTS, REFRESH_COOKIE_OPTS } from "../auth/cookies.js";
 import type { Context } from "hono";
 
 const auth = new Hono();
@@ -139,18 +141,8 @@ auth.post("/login", async (c) => {
   }
 
   // Set session cookies
-  setCookie(c, "sb-access-token", session.session.access_token, {
-    httpOnly: true,
-    sameSite: "Lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-  setCookie(c, "sb-refresh-token", session.session.refresh_token!, {
-    httpOnly: true,
-    sameSite: "Lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  setCookie(c, "sb-access-token", session.session.access_token, ACCESS_COOKIE_OPTS);
+  setCookie(c, "sb-refresh-token", session.session.refresh_token!, REFRESH_COOKIE_OPTS);
 
   return c.redirect(safeRedirect);
 });
@@ -231,18 +223,8 @@ auth.post("/register", async (c) => {
   });
 
   if (session?.session) {
-    setCookie(c, "sb-access-token", session.session.access_token, {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-    setCookie(c, "sb-refresh-token", session.session.refresh_token!, {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    setCookie(c, "sb-access-token", session.session.access_token, ACCESS_COOKIE_OPTS);
+    setCookie(c, "sb-refresh-token", session.session.refresh_token!, REFRESH_COOKIE_OPTS);
   }
 
   return c.redirect("/");

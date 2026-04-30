@@ -2,6 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { getCookie, setCookie } from "hono/cookie";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "../db/client.js";
+import { ACCESS_COOKIE_OPTS, REFRESH_COOKIE_OPTS, GUEST_SID_COOKIE_OPTS } from "./cookies.js";
 
 export interface AuthUser {
   id: string;
@@ -52,18 +53,8 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     if (!error && data.session) {
       // Refresh cookies if tokens changed
       if (data.session.access_token !== accessToken) {
-        setCookie(c, "sb-access-token", data.session.access_token, {
-          httpOnly: true,
-          sameSite: "Lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 7, // 7 days
-        });
-        setCookie(c, "sb-refresh-token", data.session.refresh_token!, {
-          httpOnly: true,
-          sameSite: "Lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 30, // 30 days
-        });
+        setCookie(c, "sb-access-token", data.session.access_token, ACCESS_COOKIE_OPTS);
+        setCookie(c, "sb-refresh-token", data.session.refresh_token!, REFRESH_COOKIE_OPTS);
       }
 
       const adminDb = getSupabaseAdmin();
@@ -112,12 +103,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     // Use access token prefix as session ID for logged-in users, or a cookie-based guest ID
     const sessionId = accessToken?.slice(0, 32) ?? getCookie(c, "plank-sid") ?? crypto.randomUUID();
     if (!accessToken && !getCookie(c, "plank-sid")) {
-      setCookie(c, "plank-sid", sessionId, {
-        httpOnly: true,
-        sameSite: "Lax",
-        path: "/",
-        maxAge: 60 * 60, // 1 hour
-      });
+      setCookie(c, "plank-sid", sessionId, GUEST_SID_COOKIE_OPTS);
     }
     // session_start is set by the column default on first insert and is
     // never touched on update — omit it from the payload.
