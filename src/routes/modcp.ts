@@ -192,7 +192,7 @@ modcp.post("/modcp", async (c) => {
       for (const tid of topicIds) {
         await adminDb.from("topics").delete().eq("id", tid);
       }
-      await recalcForumStats(adminDb, forumId);
+      await recalcForumLastPost(adminDb, forumId);
       const userCtx = { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } };
       const msg = `The selected topics have been successfully removed from the database.<br /><br />`
         + `Click <a href="/viewforum/${forumId}">Here</a> to return to the forum`;
@@ -221,7 +221,7 @@ modcp.post("/modcp", async (c) => {
       await adminDb.from("topics").delete().eq("id", tid);
     }
     // Update forum post/topic counts
-    await recalcForumStats(adminDb, forumId);
+    await recalcForumLastPost(adminDb, forumId);
     return c.html(renderMessagePage({
       ctx: userCtx,
       title: "Information",
@@ -395,8 +395,8 @@ async function handleMoveConfirm(
   }
 
   // Recalc stats for both forums
-  await recalcForumStats(adminDb, sourceForumId);
-  await recalcForumStats(adminDb, newForumId);
+  await recalcForumLastPost(adminDb, sourceForumId);
+  await recalcForumLastPost(adminDb, newForumId);
 
   const userCtx = { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } };
   const singleTopicId = topicIds.length === 1 ? topicIds[0] : 0;
@@ -582,86 +582,82 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
 
   if (!newTopic) return c.text("Failed to create split topic", 500);
 
-  // Move posts to new topic
+  // Move posts to new topic. Triggers handle forum_posts /
+  // forum_topics / topic_replies / user_posts. We still need to
+  // recompute first/last_post_id on both topics since those are
+  // structural bookkeeping the triggers don't try to follow on a
+  // topic_id change.
   await adminDb
     .from("posts")
     .update({ topic_id: newTopic.id, forum_id: newForumId })
     .in("id", postIdsToMove);
 
-  // Update new topic's first/last post
+  // New topic: pick first/last by post_time
   const { data: newFirstPost } = await adminDb
     .from("posts")
     .select("id")
     .eq("topic_id", newTopic.id)
     .order("post_time", { ascending: true })
     .limit(1)
-    .single();
-
+    .maybeSingle();
   const { data: newLastPost } = await adminDb
     .from("posts")
     .select("id")
     .eq("topic_id", newTopic.id)
     .order("post_time", { ascending: false })
     .limit(1)
-    .single();
-
-  const { count: newPostCount } = await adminDb
-    .from("posts")
-    .select("*", { count: "exact", head: true })
-    .eq("topic_id", newTopic.id);
+    .maybeSingle();
 
   await adminDb
     .from("topics")
     .update({
       topic_first_post_id: newFirstPost?.id,
       topic_last_post_id: newLastPost?.id,
-      topic_replies: (newPostCount ?? 1) - 1,
     })
     .eq("id", newTopic.id);
 
-  // Update original topic's first/last post
+  // Original topic: same recompute, or delete the topic if all its
+  // posts moved out.
   const { data: origFirstPost } = await adminDb
     .from("posts")
     .select("id")
     .eq("topic_id", topicId)
     .order("post_time", { ascending: true })
     .limit(1)
-    .single();
-
+    .maybeSingle();
   const { data: origLastPost } = await adminDb
     .from("posts")
     .select("id")
     .eq("topic_id", topicId)
     .order("post_time", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  const { count: origPostCount } = await adminDb
-    .from("posts")
-    .select("*", { count: "exact", head: true })
-    .eq("topic_id", topicId);
-
+  let origTopicDeleted = false;
   if (origFirstPost) {
     await adminDb
       .from("topics")
       .update({
         topic_first_post_id: origFirstPost.id,
         topic_last_post_id: origLastPost?.id,
-        topic_replies: (origPostCount ?? 1) - 1,
       })
       .eq("id", topicId);
   } else {
-    // All posts were moved — delete the original topic
     await adminDb.from("topics").delete().eq("id", topicId);
+    origTopicDeleted = true;
   }
 
-  // Recalc forum stats
-  await recalcForumStats(adminDb, originalTopic.forum_id);
+  // forum_last_post_id can drift when posts cross forum boundaries.
+  await recalcForumLastPost(adminDb, originalTopic.forum_id);
   if (newForumId !== originalTopic.forum_id) {
-    await recalcForumStats(adminDb, newForumId);
+    await recalcForumLastPost(adminDb, newForumId);
   }
 
-  const splitViewUrl = `/viewtopic/${topicId}`;
+  // Redirect to the surviving location: original topic if it still
+  // exists, otherwise the source forum.
+  const splitViewUrl = origTopicDeleted
+    ? `/viewforum/${originalTopic.forum_id}`
+    : `/viewtopic/${topicId}`;
   return c.html(renderMessagePage({
     ctx: { user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel } },
     title: "Information",
@@ -806,33 +802,22 @@ modcp.get("/modcp/ip", async (c) => {
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-async function recalcForumStats(adminDb: any, forumId: number) {
-  const { count: topicCount } = await adminDb
-    .from("topics")
-    .select("*", { count: "exact", head: true })
-    .eq("forum_id", forumId)
-    .neq("topic_status", 2); // exclude shadow/moved
-
-  const { count: postCount } = await adminDb
-    .from("posts")
-    .select("*", { count: "exact", head: true })
-    .eq("forum_id", forumId);
-
+/**
+ * Recompute the forums.forum_last_post_id pointer after a structural
+ * shake-up (split / move). forum_posts and forum_topics are maintained
+ * by the triggers in 20260430000001_atomic_counters.sql.
+ */
+async function recalcForumLastPost(adminDb: any, forumId: number) {
   const { data: lastPost } = await adminDb
     .from("posts")
     .select("id")
     .eq("forum_id", forumId)
     .order("post_time", { ascending: false })
     .limit(1)
-    .single();
-
+    .maybeSingle();
   await adminDb
     .from("forums")
-    .update({
-      forum_topics: topicCount ?? 0,
-      forum_posts: postCount ?? 0,
-      forum_last_post_id: lastPost?.id ?? 0,
-    })
+    .update({ forum_last_post_id: lastPost?.id ?? null })
     .eq("id", forumId);
 }
 

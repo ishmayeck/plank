@@ -35,12 +35,9 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     return c.redirect(`/viewtopic/${topic.topic_moved_id}`);
   }
 
-  // Increment view count and fetch jumpbox data in parallel
+  // Increment view count atomically and fetch jumpbox data in parallel
   const [, jumpboxHtml] = await Promise.all([
-    supabase
-      .from("topics")
-      .update({ topic_views: topic.topic_views + 1 })
-      .eq("id", topicId),
+    supabase.rpc("increment_topic_views", { p_topic_id: topicId }),
     fetchAndRenderJumpbox(supabase, topic.forum_id),
   ]);
 

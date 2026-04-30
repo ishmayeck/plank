@@ -62,24 +62,13 @@ poll.post("/poll", async (c) => {
 
   if (!option) return c.text("Invalid option", 400);
 
-  // Record vote
+  // Record vote and atomically bump the option's tally
   await adminDb.from("poll_votes").insert({
     poll_id: pollQ.id,
     user_id: user.id,
     option_id: optionId,
   });
-
-  // Increment vote count
-  const { data: currentOption } = await adminDb
-    .from("poll_options")
-    .select("vote_count")
-    .eq("id", optionId)
-    .single();
-
-  await adminDb
-    .from("poll_options")
-    .update({ vote_count: (currentOption?.vote_count ?? 0) + 1 })
-    .eq("id", optionId);
+  await adminDb.rpc("increment_poll_vote", { p_option_id: optionId });
 
   const viewUrl = `/viewtopic/${topicId}`;
   return c.html(renderMessagePage({

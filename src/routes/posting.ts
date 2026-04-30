@@ -375,44 +375,16 @@ posting.post("/posting", async (c) => {
 
     if (postErr || !post) return c.text("Failed to create post", 500);
 
-    // Create post text
+    // Create post text. Counter updates (forum_posts, forum_topics,
+    // topic_replies, topic_first/last_post_id, user_posts,
+    // forum_last_post_id) are maintained atomically by triggers
+    // installed in 20260430000001_atomic_counters.sql.
     await adminDb.from("posts_text").insert({
       post_id: post.id,
       post_subject: subject,
       post_text: message,
       post_text_html: messageHtml,
     });
-
-    // Update topic first/last post
-    await adminDb
-      .from("topics")
-      .update({
-        topic_first_post_id: post.id,
-        topic_last_post_id: post.id,
-      })
-      .eq("id", topic.id);
-
-    // Update forum last post and increment stats
-    const { data: currentForum } = await adminDb
-      .from("forums")
-      .select("forum_posts, forum_topics")
-      .eq("id", forumId)
-      .single();
-
-    await adminDb
-      .from("forums")
-      .update({
-        forum_posts: (currentForum?.forum_posts ?? 0) + 1,
-        forum_topics: (currentForum?.forum_topics ?? 0) + 1,
-        forum_last_post_id: post.id,
-      })
-      .eq("id", forumId);
-
-    // Update user post count
-    await adminDb
-      .from("profiles")
-      .update({ user_posts: (await adminDb.from("posts").select("id", { count: "exact", head: true }).eq("poster_id", user.id)).count ?? 0 })
-      .eq("id", user.id);
 
     // Create poll if poll title and options provided
     const pollTitle = (body.poll_title as string)?.trim() ?? "";
@@ -487,48 +459,18 @@ posting.post("/posting", async (c) => {
       post_text_html: messageHtml,
     });
 
-    // Update topic last post and reply count
-    const { count: replyCount } = await adminDb
-      .from("posts")
-      .select("*", { count: "exact", head: true })
-      .eq("topic_id", topicId);
-
-    await adminDb
+    // Counters (forum_posts, topic_replies, topic_last_post_id,
+    // forum_last_post_id, user_posts) are maintained by triggers.
+    // Recompute the page number for the redirect from the updated row.
+    const { data: updatedTopic } = await adminDb
       .from("topics")
-      .update({
-        topic_last_post_id: post.id,
-        topic_replies: (replyCount ?? 1) - 1,
-      })
-      .eq("id", topicId);
-
-    // Update forum last post and increment post count
-    const { data: currentForum } = await adminDb
-      .from("forums")
-      .select("forum_posts")
-      .eq("id", forumId)
+      .select("topic_replies")
+      .eq("id", topicId)
       .single();
-
-    await adminDb
-      .from("forums")
-      .update({
-        forum_last_post_id: post.id,
-        forum_posts: (currentForum?.forum_posts ?? 0) + 1,
-      })
-      .eq("id", forumId);
-
-    // Update user post count
-    const { count: userPosts } = await adminDb
-      .from("posts")
-      .select("*", { count: "exact", head: true })
-      .eq("poster_id", user.id);
-
-    await adminDb
-      .from("profiles")
-      .update({ user_posts: userPosts ?? 0 })
-      .eq("id", user.id);
+    const replyCount = (updatedTopic?.topic_replies ?? 0) + 1;
 
     const postsPerPage = 15;
-    const totalPages = Math.ceil((replyCount ?? 1) / postsPerPage);
+    const totalPages = Math.ceil(replyCount / postsPerPage);
     const viewUrl = totalPages > 1
       ? `/viewtopic/${topicId}?page=${totalPages}#${post.id}`
       : `/viewtopic/${topicId}#${post.id}`;
