@@ -2,12 +2,9 @@ import { Hono } from "hono";
 import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
+import { isModOrAdmin } from "../lib/userLevel.js";
 
 const modcp = new Hono();
-
-function isMod(user: any): boolean {
-  return user && user.userLevel >= 1; // 1=admin, 2=mod
-}
 
 function forbiddenPage(user: any): string {
   return renderMessagePage({
@@ -28,7 +25,7 @@ function forbiddenPage(user: any): string {
 
 modcp.get("/modcp", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
+  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
 
   const mode = c.req.query("mode") ?? "";
   const forumId = parseInt(c.req.query("f") ?? "0", 10);
@@ -158,7 +155,7 @@ modcp.get("/modcp", async (c) => {
 
 modcp.post("/modcp", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
+  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
 
   const body = await c.req.parseBody();
   const forumId = parseInt(body.f as string, 10);
@@ -415,7 +412,7 @@ async function handleMoveConfirm(
 
 modcp.get("/modcp/split", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
+  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
 
   const topicId = parseInt(c.req.query("t") ?? "0", 10);
   if (!topicId) return c.text("Topic not specified", 400);
@@ -676,7 +673,7 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
 
 modcp.get("/modcp/ip", async (c) => {
   const user = c.get("user");
-  if (!isMod(user)) return c.html(forbiddenPage(user), 403);
+  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
 
   const postId = parseInt(c.req.query("p") ?? "0", 10);
   if (!postId) return c.text("Post not specified", 400);

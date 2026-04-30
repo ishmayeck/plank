@@ -4,6 +4,7 @@ import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
+import { isModOrAdmin } from "../lib/userLevel.js";
 import { renderPollForTopic } from "./poll.js";
 
 const POSTS_PER_PAGE = 15;
@@ -119,7 +120,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const isLocked = topic.topic_status === 1;
   const canReply = !isLocked && !!user;
   const canPost = !!user;
-  const isTopicMod = user && user.userLevel >= 1;
+  const isTopicMod = isModOrAdmin(user);
 
   // Build topic moderation controls for moderators/admins
   let topicAdminHtml = "";
@@ -224,7 +225,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
 
       // Action buttons (based on permissions)
       const isOwnPost = user && poster?.id === user.id;
-      const isMod = user && (user.userLevel >= 2 || user.userLevel === 1);
+      const isMod = isModOrAdmin(user);
 
       const quoteImg =
         user && !isLocked

@@ -2,15 +2,12 @@ import { Hono } from "hono";
 import { Template } from "../template/engine.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
+import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
 import path from "path";
 
 const THEME_DIR = path.join(process.cwd(), "themes", "Solaris");
 
 const admin = new Hono();
-
-function isAdmin(user: any): boolean {
-  return user && user.userLevel === 1;
-}
 
 function adminRender(bodyTpl: string): Template {
   const tpl = new Template(THEME_DIR);
@@ -729,9 +726,9 @@ admin.get("/admin/users", async (c) => {
         <tr><td class="row1">Username</td><td class="row2"><input class="post" type="text" name="username" value="${escapeHtml(profile.username)}" /></td></tr>
         <tr><td class="row1">User Level</td><td class="row2">
           <select name="user_level">
-            <option value="0"${profile.user_level === 0 ? " selected" : ""}>User</option>
-            <option value="2"${profile.user_level === 2 ? " selected" : ""}>Moderator</option>
-            <option value="1"${profile.user_level === 1 ? " selected" : ""}>Admin</option>
+            <option value="${USER_LEVEL.USER}"${profile.user_level === USER_LEVEL.USER ? " selected" : ""}>User</option>
+            <option value="${USER_LEVEL.MOD}"${profile.user_level === USER_LEVEL.MOD ? " selected" : ""}>Moderator</option>
+            <option value="${USER_LEVEL.ADMIN}"${profile.user_level === USER_LEVEL.ADMIN ? " selected" : ""}>Admin</option>
           </select>
         </td></tr>
         <tr><td class="row1">Location</td><td class="row2"><input class="post" type="text" name="user_from" value="${escapeHtml(profile.user_from ?? "")}" /></td></tr>

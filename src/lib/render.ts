@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { Template } from "../template/engine.js";
+import { USER_LEVEL, isAdmin } from "./userLevel.js";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -102,7 +103,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
 
     // Footer
     PHPBB_VERSION: "",
-    ADMIN_LINK: ctx.user?.userLevel && ctx.user.userLevel >= 1
+    ADMIN_LINK: isAdmin(ctx.user)
       ? '<a href="/admin">Go to Administration Panel</a><br /><br />'
       : "",
     TRANSLATION_INFO: "",
@@ -211,10 +212,10 @@ export function formatUsernameLink(
   username: string,
   userLevel: number
 ): string {
-  if (userLevel === 1) {
+  if (userLevel === USER_LEVEL.ADMIN) {
     return `<a href="/profile/${id}" style="color:${ADMIN_COLOR}"><b>${username}</b></a>`;
   }
-  if (userLevel === 2) {
+  if (userLevel === USER_LEVEL.MOD) {
     return `<a href="/profile/${id}" style="color:${MOD_COLOR}"><b>${username}</b></a>`;
   }
   return `<a href="/profile/${id}">${username}</a>`;

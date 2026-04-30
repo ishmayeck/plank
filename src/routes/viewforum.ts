@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, formatUsernameLink } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
+import { isModOrAdmin } from "../lib/userLevel.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
 
 const TOPICS_PER_PAGE = 25;
@@ -270,7 +271,7 @@ viewforum.get("/viewforum/:id", async (c) => {
 function canDoAction(authLevel: number, user: any): boolean {
   if (authLevel === 0) return true;
   if (!user) return false;
-  if (user.userLevel >= 1) return true; // admin can do everything
+  if (isModOrAdmin(user)) return true; // mods and admins bypass per-forum ACLs
   if (authLevel === 1) return true; // registered user
   // For levels 2 (private/group), 3 (mod), 4 (admin) — simplified: deny unless admin
   return false;
@@ -292,7 +293,7 @@ function buildAuthList(forum: any, user: any): string {
   lines.push(`You ${can(canDelete)} delete your posts in this forum`);
   lines.push(`You ${can(canVote)} vote in polls in this forum`);
 
-  if (user?.userLevel >= 1) {
+  if (isModOrAdmin(user)) {
     lines.push(`You ${can(true)} <a href="/modcp?f=${forum.id}">moderate this forum</a>`);
   }
 

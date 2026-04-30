@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createPageTemplate, renderPage, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
+import { isAdmin, isModOrAdmin } from "../lib/userLevel.js";
 import { loginRedirect } from "./auth.js";
 
 const groupcp = new Hono();
@@ -151,7 +152,7 @@ async function renderGroupInfo(c: any, groupId: number) {
       .eq("group_id", groupId)
       .eq("user_id", user.id)
       .single();
-    if (!membership && user.userLevel < 1) {
+    if (!membership && !isModOrAdmin(user)) {
       return c.text("Group not found", 404);
     }
   }
@@ -167,7 +168,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   const isMember = membership && !membership.user_pending;
   const isPending = membership && membership.user_pending;
   const isGroupMod = group.group_moderator === user.id;
-  const isAdmin = user.userLevel === 1;
+  const userIsAdmin = isAdmin(user);
 
   // Get members
   const { data: members } = await adminDb
@@ -178,7 +179,7 @@ async function renderGroupInfo(c: any, groupId: number) {
 
   // Get pending members (for group mod)
   let pendingMembers: any[] = [];
-  if (isGroupMod || isAdmin) {
+  if (isGroupMod || userIsAdmin) {
     const { data: pending } = await adminDb
       .from("user_group")
       .select("user_id, profiles(id, username, user_posts, user_from)")
@@ -280,12 +281,12 @@ async function renderGroupInfo(c: any, groupId: number) {
   }
 
   // Show mod options if user is group mod or admin
-  if (isGroupMod || isAdmin) {
+  if (isGroupMod || userIsAdmin) {
     tpl.assignBlockVars("switch_mod_option", {});
   }
 
   // Populate members
-  if (group.group_type === 2 && !isMember && !isGroupMod && !isAdmin) {
+  if (group.group_type === 2 && !isMember && !isGroupMod && !userIsAdmin) {
     tpl.assignBlockVars("switch_hidden_group", {});
   } else if (!members || members.length === 0) {
     tpl.assignBlockVars("switch_no_members", {});
@@ -309,7 +310,7 @@ async function renderGroupInfo(c: any, groupId: number) {
 
       tpl.assignBlockVars("member_row", vars);
 
-      if (isGroupMod || isAdmin) {
+      if (isGroupMod || userIsAdmin) {
         tpl.assignBlockVars("member_row.switch_mod_option", {});
       }
 
@@ -318,7 +319,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   }
 
   // Pending members box
-  if ((isGroupMod || isAdmin) && pendingMembers.length > 0) {
+  if ((isGroupMod || userIsAdmin) && pendingMembers.length > 0) {
     // Render pending members inline using the pending template
     const pendingTpl = createPageTemplate({
       user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
@@ -388,7 +389,7 @@ groupcp.post("/groupcp", async (c) => {
   if (!group) return c.text("Group not found", 404);
 
   const isGroupMod = group.group_moderator === user.id;
-  const isAdmin = user.userLevel === 1;
+  const userIsAdmin = isAdmin(user);
 
   // Join group
   if (body.joingroup) {
@@ -444,7 +445,7 @@ groupcp.post("/groupcp", async (c) => {
   }
 
   // Group mod/admin actions
-  if (!isGroupMod && !isAdmin) {
+  if (!isGroupMod && !userIsAdmin) {
     return c.text("Forbidden", 403);
   }
 

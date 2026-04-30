@@ -3,6 +3,7 @@ import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate, fetchA
 import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
+import { isModOrAdmin } from "../lib/userLevel.js";
 import { Template } from "../template/engine.js";
 import { join } from "node:path";
 import { loginRedirect } from "./auth.js";
@@ -73,7 +74,7 @@ posting.get("/posting", async (c) => {
       .single();
     if (!post) return c.text("Post not found", 404);
     // Check permission: own post or mod/admin
-    if (post.poster_id !== user.id && user.userLevel < 1) {
+    if (post.poster_id !== user.id && !isModOrAdmin(user)) {
       return c.text("Forbidden", 403);
     }
     topicId = post.topic_id;
@@ -92,7 +93,7 @@ posting.get("/posting", async (c) => {
       .eq("id", postId)
       .single();
     if (!post) return c.text("Post not found", 404);
-    if (post.poster_id !== user.id && user.userLevel < 1) {
+    if (post.poster_id !== user.id && !isModOrAdmin(user)) {
       return c.text("Forbidden", 403);
     }
     return c.html(renderConfirmPage({
@@ -108,7 +109,7 @@ posting.get("/posting", async (c) => {
   const topicReviewHtml = topicId && (mode === "reply" || mode === "quote")
     ? await renderTopicReview(topicId, smilies, true)
     : "";
-  const topicTypeToggle = (isFirstPost && user.userLevel >= 1)
+  const topicTypeToggle = (isFirstPost && isModOrAdmin(user))
     ? buildTopicTypeToggle(currentTopicType)
     : "";
   const jumpboxHtml = await fetchAndRenderJumpbox(supabase);
@@ -179,7 +180,7 @@ posting.post("/posting", async (c) => {
   const enableSig = body.attach_sig === "on";
   const enableSmilies = body.disable_smilies !== "on";
   const enableBBCode = body.disable_bbcode !== "on";
-  const topicType = user.userLevel >= 1 ? parseInt(body.topictype as string, 10) || 0 : 0;
+  const topicType = isModOrAdmin(user) ? parseInt(body.topictype as string, 10) || 0 : 0;
 
   // Collect current poll options from form
   function collectPollOptions(): string[] {
@@ -218,7 +219,7 @@ posting.post("/posting", async (c) => {
     if (pollOpts.length < 2) pollOpts = [...pollOpts, "", ""].slice(0, 2);
 
     const isFirst = mode === "newtopic";
-    const topicTypeToggle = (isFirst && user.userLevel >= 1)
+    const topicTypeToggle = (isFirst && isModOrAdmin(user))
       ? buildTopicTypeToggle(topicType)
       : "";
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
@@ -324,7 +325,7 @@ posting.post("/posting", async (c) => {
           forumName: forum?.forum_name ?? "", subject, message,
           postTitle: "Post a new topic",
           smilies, error: "You must enter at least two poll options.",
-          topicTypeToggle: user.userLevel >= 1 ? buildTopicTypeToggle(topicType) : undefined,
+          topicTypeToggle: isModOrAdmin(user) ? buildTopicTypeToggle(topicType) : undefined,
           showPoll: true, pollTitle: pollTitleCheck, pollOptions: pollOpts,
           pollLength: parseInt(body.poll_length as string, 10) || 0,
           jumpboxHtml: await fetchAndRenderJumpbox(supabase),
@@ -540,7 +541,7 @@ posting.post("/posting", async (c) => {
       .single();
 
     if (!existingPost) return c.text("Post not found", 404);
-    if (existingPost.poster_id !== user.id && user.userLevel < 1) {
+    if (existingPost.poster_id !== user.id && !isModOrAdmin(user)) {
       return c.text("Forbidden", 403);
     }
 
@@ -571,7 +572,7 @@ posting.post("/posting", async (c) => {
     }).eq("post_id", postId);
 
     // Update topic type if editing first post and user is admin
-    if (topicType !== undefined && user.userLevel >= 1) {
+    if (topicType !== undefined && isModOrAdmin(user)) {
       const { data: editedPost } = await adminDb
         .from("posts")
         .select("topic_id, topics!posts_topic_id_fkey(topic_first_post_id)")
@@ -609,7 +610,7 @@ posting.post("/posting", async (c) => {
       .single();
 
     if (!post) return c.text("Post not found", 404);
-    if (post.poster_id !== user.id && user.userLevel < 1) {
+    if (post.poster_id !== user.id && !isModOrAdmin(user)) {
       return c.text("Forbidden", 403);
     }
 

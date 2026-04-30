@@ -8,10 +8,13 @@ config({ path: ".env" });
 let adminDb: SupabaseClient;
 let adminUserId: string;
 let normalUserId: string;
+let modUserId: string;
 let adminAccess: string;
 let adminRefresh: string;
 let normalAccess: string;
 let normalRefresh: string;
+let modAccess: string;
+let modRefresh: string;
 
 async function cleanupUser(username: string) {
   const { data } = await adminDb
@@ -66,6 +69,7 @@ beforeAll(async () => {
 
   await cleanupUser("AdminTestAdmin");
   await cleanupUser("AdminTestNormal");
+  await cleanupUser("AdminTestMod");
 
   const adm = await createAndLogin("AdminTestAdmin", "admintestadmin@plank.local", "testpass123", 1);
   adminUserId = adm.userId;
@@ -76,6 +80,11 @@ beforeAll(async () => {
   normalUserId = norm.userId;
   normalAccess = norm.access;
   normalRefresh = norm.refresh;
+
+  const mod = await createAndLogin("AdminTestMod", "admintestmod@plank.local", "testpass123", 2);
+  modUserId = mod.userId;
+  modAccess = mod.access;
+  modRefresh = mod.refresh;
 });
 
 afterAll(async () => {
@@ -84,6 +93,7 @@ afterAll(async () => {
   await adminDb.from("config").delete().eq("config_name", "posts_per_page");
   await adminDb.auth.admin.deleteUser(adminUserId);
   await adminDb.auth.admin.deleteUser(normalUserId);
+  await adminDb.auth.admin.deleteUser(modUserId);
 });
 
 function admHeaders(): HeadersInit {
@@ -98,10 +108,21 @@ function normalHeaders(): HeadersInit {
   };
 }
 
+function modHeaders(): HeadersInit {
+  return {
+    Cookie: `sb-access-token=${modAccess}; sb-refresh-token=${modRefresh}`,
+  };
+}
+
 describe("Admin Panel", () => {
   describe("access control", () => {
     it("returns 403 for non-admin on admin index", async () => {
       const res = await app.request("/admin", { headers: normalHeaders() });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 for moderator on admin index", async () => {
+      const res = await app.request("/admin", { headers: modHeaders() });
       expect(res.status).toBe(403);
     });
 
@@ -118,6 +139,29 @@ describe("Admin Panel", () => {
     it("returns 403 for non-admin on forums", async () => {
       const res = await app.request("/admin/forums", { headers: normalHeaders() });
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe("admin link visibility", () => {
+    it("renders the admin link in the footer for admins", async () => {
+      const res = await app.request("/", { headers: admHeaders() });
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Go to Administration Panel");
+    });
+
+    it("does NOT render the admin link for moderators", async () => {
+      const res = await app.request("/", { headers: modHeaders() });
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("Go to Administration Panel");
+    });
+
+    it("does NOT render the admin link for regular users", async () => {
+      const res = await app.request("/", { headers: normalHeaders() });
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("Go to Administration Panel");
     });
   });
 

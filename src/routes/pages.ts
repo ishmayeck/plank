@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
+import { USER_LEVEL } from "../lib/userLevel.js";
 
 const pages = new Hono();
 
@@ -195,9 +196,9 @@ pages.get("/viewonline", async (c) => {
     const profile = s.profiles as any;
     const userLevel = profile?.user_level ?? 0;
     let styledUsername = profile?.username ?? "Unknown";
-    if (userLevel === 1) {
+    if (userLevel === USER_LEVEL.ADMIN) {
       styledUsername = `<b style="color:${ADMIN_COLOR}">${styledUsername}</b>`;
-    } else if (userLevel === 2) {
+    } else if (userLevel === USER_LEVEL.MOD) {
       styledUsername = `<b style="color:${MOD_COLOR}">${styledUsername}</b>`;
     }
     tpl.assignBlockVars("reg_user_row", {
