@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -18,31 +19,8 @@ let testTopicId: number;
 let testPostId: number;
 let testPost2Id: number;
 
-async function deleteUserAndAllRefs(userId: string) {
-  // posts.poster_id and topics.topic_poster reference profiles(id)
-  // without ON DELETE CASCADE — clean them out by hand.
-  await adminDb.from("posts").delete().eq("poster_id", userId);
-  await adminDb.from("topics").delete().eq("topic_poster", userId);
-  await adminDb.from("privmsgs").delete().eq("privmsgs_from_userid", userId);
-  await adminDb.from("privmsgs").delete().eq("privmsgs_to_userid", userId);
-  await adminDb.auth.admin.deleteUser(userId);
-}
-
-async function cleanupUser(username: string, email?: string) {
-  const { data } = await adminDb
-    .from("profiles")
-    .select("id")
-    .eq("username", username)
-    .maybeSingle();
-  if (data) await deleteUserAndAllRefs(data.id);
-  // supabase db reset doesn't always truncate auth.users — also wipe by email
-  if (email) {
-    const { data: list } = await adminDb.auth.admin.listUsers({ perPage: 1000 });
-    for (const u of list?.users ?? []) {
-      if (u.email === email) await deleteUserAndAllRefs(u.id);
-    }
-  }
-}
+const cleanupUser = (username: string, email?: string) =>
+  cleanupTestUser(adminDb, username, email);
 
 async function createAndLogin(
   username: string,

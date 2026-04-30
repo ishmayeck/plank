@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -13,18 +14,8 @@ let senderRefresh: string;
 let recipientAccess: string;
 let recipientRefresh: string;
 
-async function cleanupUser(username: string) {
-  const { data } = await adminDb
-    .from("profiles")
-    .select("id")
-    .eq("username", username)
-    .single();
-  if (data) {
-    await adminDb.from("privmsgs").delete().eq("privmsgs_from_userid", data.id);
-    await adminDb.from("privmsgs").delete().eq("privmsgs_to_userid", data.id);
-    await adminDb.auth.admin.deleteUser(data.id);
-  }
-}
+const cleanupUser = (username: string, email?: string) =>
+  cleanupTestUser(adminDb, username, email);
 
 async function createAndLogin(
   username: string,
@@ -65,8 +56,8 @@ beforeAll(async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  await cleanupUser("PMSender");
-  await cleanupUser("PMRecipient");
+  await cleanupUser("PMSender", "pmsender@plank.local");
+  await cleanupUser("PMRecipient", "pmrecipient@plank.local");
 
   const sender = await createAndLogin("PMSender", "pmsender@plank.local", "testpass123");
   senderUserId = sender.userId;

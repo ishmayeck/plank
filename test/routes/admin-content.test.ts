@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
 import { loadSmilies, clearSmiliesCache } from "../../src/lib/smilies.js";
 import { loadWordCensors, clearCensorCache } from "../../src/lib/wordcensor.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -13,17 +14,8 @@ let targetUserId: string;
 let adminAccess: string;
 let adminRefresh: string;
 
-async function cleanupUser(username: string) {
-  const { data } = await adminDb
-    .from("profiles")
-    .select("id")
-    .eq("username", username)
-    .single();
-  if (data) {
-    await adminDb.from("banlist").delete().eq("ban_userid", data.id);
-    await adminDb.auth.admin.deleteUser(data.id);
-  }
-}
+const cleanupUser = (username: string, email?: string) =>
+  cleanupTestUser(adminDb, username, email);
 
 async function createAndLogin(
   username: string,
@@ -65,8 +57,8 @@ beforeAll(async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  await cleanupUser("ContentAdmin");
-  await cleanupUser("ContentTarget");
+  await cleanupUser("ContentAdmin", "contentadmin@plank.local");
+  await cleanupUser("ContentTarget", "contenttarget@plank.local");
 
   const adm = await createAndLogin("ContentAdmin", "contentadmin@plank.local", "testpass123", 1);
   adminUserId = adm.userId;
@@ -80,8 +72,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await adminDb.from("banlist").delete().eq("ban_userid", targetUserId);
   await adminDb.from("banlist").delete().eq("ban_email", "banned@test.com");
-  await cleanupUser("ContentAdmin");
-  await cleanupUser("ContentTarget");
+  await cleanupUser("ContentAdmin", "contentadmin@plank.local");
+  await cleanupUser("ContentTarget", "contenttarget@plank.local");
 });
 
 function admHeaders(): HeadersInit {

@@ -178,6 +178,12 @@ auth.post("/register", async (c) => {
   if (username.length < 3 || username.length > 25) {
     return c.html(renderRegisterPage(c, "Username must be between 3 and 25 characters.", { username, email }, avatarConfig));
   }
+  // Restrict the username charset so it cannot break out of attribute
+  // contexts (BBCode quote attribution, HTML attributes, JS strings).
+  // Allowed: letters, digits, underscore, hyphen, period.
+  if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+    return c.html(renderRegisterPage(c, "Username may only contain letters, digits, underscore, hyphen, and period.", { username, email }, avatarConfig));
+  }
 
   const adminSupabase = getSupabaseAdmin();
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -19,17 +20,17 @@ let refreshToken: string;
 let access2: string;
 let refresh2: string;
 
-async function cleanupUser(username: string) {
+async function cleanupUser(username: string, email?: string) {
+  // Clear poll votes first since they don't cascade from profiles.
   const { data } = await adminDb
     .from("profiles")
     .select("id")
     .eq("username", username)
-    .single();
+    .maybeSingle();
   if (data) {
     await adminDb.from("poll_votes").delete().eq("user_id", data.id);
-    await adminDb.from("topics").delete().eq("topic_poster", data.id);
-    await adminDb.auth.admin.deleteUser(data.id);
   }
+  await cleanupTestUser(adminDb, username, email);
 }
 
 async function createAndLogin(
@@ -71,8 +72,8 @@ beforeAll(async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  await cleanupUser("PollTester1");
-  await cleanupUser("PollTester2");
+  await cleanupUser("PollTester1", "polltest1@plank.local");
+  await cleanupUser("PollTester2", "polltest2@plank.local");
 
   const user1 = await createAndLogin("PollTester1", "polltest1@plank.local", "testpass123");
   testUserId = user1.userId;

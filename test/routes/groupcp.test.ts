@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -19,17 +20,18 @@ let openGroupId: number;
 let closedGroupId: number;
 let hiddenGroupId: number;
 
-async function cleanupUser(username: string) {
+async function cleanupUser(username: string, email?: string) {
+  // Wipe groups this user moderates first since groups doesn't cascade
+  // from profiles, then delegate the rest to the shared helper.
   const { data } = await adminDb
     .from("profiles")
     .select("id")
     .eq("username", username)
-    .single();
+    .maybeSingle();
   if (data) {
-    await adminDb.from("user_group").delete().eq("user_id", data.id);
     await adminDb.from("groups").delete().eq("group_moderator", data.id);
-    await adminDb.auth.admin.deleteUser(data.id);
   }
+  await cleanupTestUser(adminDb, username, email);
 }
 
 async function createAndLogin(
@@ -73,9 +75,9 @@ beforeAll(async () => {
   );
 
   // Cleanup
-  await cleanupUser("GrpUser1");
-  await cleanupUser("GrpUser2");
-  await cleanupUser("GrpMod");
+  await cleanupUser("GrpUser1", "grpuser1@plank.local");
+  await cleanupUser("GrpUser2", "grpuser2@plank.local");
+  await cleanupUser("GrpMod", "grpmod@plank.local");
 
   // Cleanup old test groups
   await adminDb.from("groups").delete().eq("group_name", "Test Open Group");

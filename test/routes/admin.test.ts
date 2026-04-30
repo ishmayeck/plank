@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -16,16 +17,8 @@ let normalRefresh: string;
 let modAccess: string;
 let modRefresh: string;
 
-async function cleanupUser(username: string) {
-  const { data } = await adminDb
-    .from("profiles")
-    .select("id")
-    .eq("username", username)
-    .single();
-  if (data) {
-    await adminDb.auth.admin.deleteUser(data.id);
-  }
-}
+const cleanupUser = (username: string, email?: string) =>
+  cleanupTestUser(adminDb, username, email);
 
 async function createAndLogin(
   username: string,
@@ -67,9 +60,9 @@ beforeAll(async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  await cleanupUser("AdminTestAdmin");
-  await cleanupUser("AdminTestNormal");
-  await cleanupUser("AdminTestMod");
+  await cleanupUser("AdminTestAdmin", "admintestadmin@plank.local");
+  await cleanupUser("AdminTestNormal", "admintestnormal@plank.local");
+  await cleanupUser("AdminTestMod", "admintestmod@plank.local");
 
   const adm = await createAndLogin("AdminTestAdmin", "admintestadmin@plank.local", "testpass123", 1);
   adminUserId = adm.userId;
