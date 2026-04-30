@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  phpbb:
+    image: php:5.6-apache
+    ports:
+      - "8080:80"
+    volumes:
+      - ./vendor/phpBB2:/var/www/html
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html
+    depends_on:
+      - mysql
+    command: >
+      bash -c "docker-php-ext-install mysql mysqli && apache2-foreground"
+
+  mysql:
+    image: mysql:5.7
+    platform: linux/amd64
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: phpbb
+      MYSQL_DATABASE: phpbb
+      MYSQL_USER: phpbb
+      MYSQL_PASSWORD: phpbb
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: phpbb
+    depends_on:
+      - mysql
+
+volumes:
+  mysql_data:

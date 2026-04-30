@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { Template } from "../../src/template/engine.js";
 
-const SOLARIS_DIR = join(import.meta.dirname, "..", "..", "..", "Solaris");
+const SOLARIS_DIR = join(import.meta.dirname, "..", "..", "vendor", "Solaris");
 
 describe("phpBB2 Template Engine", () => {
   // ─── Variable Substitution ───────────────────────────────────────

@@ -28,7 +28,7 @@ app.use(
 );
 
 // Serve smiley images from phpBB2 source
-app.use("/images/smiles/*", serveStatic({ root: "../phpBB2/" }));
+app.use("/images/smiles/*", serveStatic({ root: "./vendor/phpBB2/" }));
 
 // Serve phpBB2's root-level images (some templates reference images/spacer.gif etc.)
 app.use("/images/*", serveStatic({ root: "./themes/Solaris/" }));
