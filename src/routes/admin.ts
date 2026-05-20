@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { Template } from "../template/engine.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
@@ -7,30 +8,37 @@ import { formHiddenFields } from "../lib/csrf.js";
 import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
 import { clearSmiliesCache } from "../lib/smilies.js";
 import { clearCensorCache } from "../lib/wordcensor.js";
+import { renderAdminPage } from "../lib/adminLayout.js";
 import path from "path";
 
 const THEME_DIR = path.join(process.cwd(), "themes", "Solaris");
 
 const admin = new Hono();
 
+/**
+ * Build a Template for an admin page body. Only the per-module body
+ * template from `themes/<theme>/admin/` is loaded — chrome (header,
+ * sidebar, footer) is rendered separately via renderAdminPage so the
+ * layout can diverge from phpBB2's frameset without touching theme
+ * files.
+ */
 function adminRender(bodyTpl: string): Template {
   const tpl = new Template(THEME_DIR);
-  tpl.loadFile("header", "admin/page_header.tpl");
   tpl.loadFile("body", `admin/${bodyTpl}`);
-  tpl.loadFile("footer", "admin/page_footer.tpl");
-  tpl.assignVars({
-    META: "",
-    S_CONTENT_ENCODING: "utf-8",
-    SITENAME: "Plank Forum",
-    L_PHPBB_ADMIN: "Administration Panel",
-    PHPBB_VERSION: "Plank 1.0",
-    TRANSLATION_INFO: "",
-  });
   return tpl;
 }
 
-function renderAdmin(tpl: Template): string {
-  return tpl.render("header") + tpl.render("body") + tpl.render("footer");
+/**
+ * Render the body slot, wrap it in Plank's admin shell, return the
+ * final HTML. `title` defaults to a generic label; pass a more
+ * specific one (e.g. "Forum Administration") if you have it.
+ */
+function renderAdmin(c: Context, tpl: Template, title: string = "Administration Panel"): string {
+  return renderAdminPage({
+    title: `Plank Forum :: ${title}`,
+    body: tpl.render("body"),
+    currentUrl: new URL(c.req.url).pathname,
+  });
 }
 
 // ─── Admin Index / Dashboard ──────────────────────────────────
@@ -92,7 +100,7 @@ admin.get("/admin", async (c) => {
     VERSION_INFO: "<p>Plank Forum 1.0 (phpBB2 reimplementation)</p>",
   });
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 // ─── Board Configuration ──────────────────────────────────────
@@ -333,7 +341,7 @@ admin.get("/admin/config", async (c) => {
     SMTP_PASSWORD: cfg.smtp_password ?? "",
   });
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/config", async (c) => {
@@ -439,7 +447,7 @@ admin.get("/admin/forums", async (c) => {
     }
   }
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/forums", async (c) => {
@@ -707,22 +715,15 @@ admin.get("/admin/users", async (c) => {
 
     if (!profile) return c.text("User not found", 404);
 
-    // Return a simple edit form (not using full template for brevity)
-    const tpl = adminRender("user_select_body.tpl");
-    tpl.assignVars({
-      L_USER_TITLE: `Edit User: ${profile.username}`,
-      L_USER_EXPLAIN: "",
-      L_USER_SELECT: "User",
-      L_LOOK_UP: "Look up",
-      L_FIND_USERNAME: "Find a username",
-      S_USER_ACTION: "/admin/users",
-      S_HIDDEN_FIELDS: formHiddenFields(c),
-      U_SEARCH_USER: "/search",
-    });
-    // Override body with inline edit form
+    // No theme template for this view — there's user_edit_body.tpl in
+    // Solaris but its variable surface is huge and inconsistent across
+    // forks. The hand-rolled form is simpler than fighting the .tpl
+    // and matches the visual idiom (forumline/thHead/row1/row2 from
+    // subSilver.css).
     const editHtml = `
       <h1>Edit User: ${escapeHtml(profile.username)}</h1>
       <form method="post" action="/admin/users">
+      ${formHiddenFields(c).html}
       <input type="hidden" name="user_id" value="${profile.id}" />
       <input type="hidden" name="mode" value="save" />
       <table cellspacing="1" cellpadding="4" border="0" class="forumline" width="100%">
@@ -747,9 +748,13 @@ admin.get("/admin/users", async (c) => {
         </td></tr>
       </table></form>`;
 
-    const header = tpl.render("header");
-    const footer = tpl.render("footer");
-    return c.html(header + editHtml + footer);
+    return c.html(
+      renderAdminPage({
+        title: `Plank Forum :: Edit User ${profile.username}`,
+        body: editHtml,
+        currentUrl: new URL(c.req.url).pathname,
+      })
+    );
   }
 
   // Show user search form
@@ -765,7 +770,7 @@ admin.get("/admin/users", async (c) => {
     U_SEARCH_USER: "/search",
   });
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/users", async (c) => {
@@ -874,7 +879,7 @@ admin.get("/admin/bans", async (c) => {
     S_UNBAN_EMAILLIST_SELECT: markup(emailUnbanSelect),
   });
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/bans", async (c) => {
@@ -972,7 +977,7 @@ admin.get("/admin/ranks", async (c) => {
     }
   }
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/ranks", async (c) => {
@@ -1052,7 +1057,7 @@ admin.get("/admin/smilies", async (c) => {
     }
   }
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/smilies", async (c) => {
@@ -1126,7 +1131,7 @@ admin.get("/admin/words", async (c) => {
     }
   }
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/words", async (c) => {
@@ -1279,29 +1284,25 @@ admin.get("/admin/auth", async (c) => {
     )
     .join("");
 
-  // Standalone landing page — phpBB2's original auth_select_body.tpl
-  // assumes a single list, but we have two natural entry points
-  // (forums vs groups) so a small inline HTML scaffold reads cleaner
-  // than fighting the template. The actual edit pages below use the
-  // original .tpl files unmodified.
-  const tpl = adminRender("index_body.tpl");
-  // Replace the index body content with our two-column auth picker.
-  // index_body.tpl has its own structure; we just override the body
-  // wholesale by loading a different template into the "body" slot.
-  // Build the HTML by hand instead of fighting the template engine.
-  const html =
-    `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">` +
-    `<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" />` +
-    `<link rel="stylesheet" href="/templates/Solaris/admin/subSilver.css" type="text/css" />` +
-    `<title>Plank Forum - Permission Management</title></head><body>` +
+  // Plank-authored landing page (no phpBB2 template for this — the
+  // closest is auth_select_body.tpl, which assumes a single picker).
+  // Two side-by-side lists let the admin jump straight into either
+  // a forum's required-level dropdowns or a group's access matrix.
+  const body =
     `<h1>Permission Management</h1>` +
-    `<p>Choose a forum to set its required permission levels, or a group ` +
-    `to set its per-forum access bits.</p>` +
+    `<p>Choose a forum to set its required permission levels, or a ` +
+    `group to set its per-forum access bits.</p>` +
     `<table cellspacing="1" cellpadding="4" border="0" align="center" class="forumline">` +
     `<tr><th class="thHead">Forums</th></tr>${forumRows}` +
     `<tr><th class="thHead">Groups</th></tr>${groupRows}` +
-    `</table></body></html>`;
-  return c.html(html);
+    `</table>`;
+  return c.html(
+    renderAdminPage({
+      title: "Plank Forum :: Permission Management",
+      body,
+      currentUrl: new URL(c.req.url).pathname,
+    })
+  );
 });
 
 admin.get("/admin/auth/forum/:id", async (c) => {
@@ -1354,7 +1355,7 @@ admin.get("/admin/auth/forum/:id", async (c) => {
     });
   }
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/auth/forum/:id", async (c) => {
@@ -1462,7 +1463,7 @@ admin.get("/admin/auth/group/:id", async (c) => {
     }
   }
 
-  return c.html(renderAdmin(tpl));
+  return c.html(renderAdmin(c, tpl));
 });
 
 admin.post("/admin/auth/group/:id", async (c) => {

@@ -169,6 +169,72 @@ describe("Admin Panel", () => {
     });
   });
 
+  describe("admin layout shell", () => {
+    it("renders the Plank sidebar with all four sections", async () => {
+      const res = await app.request("/admin", { headers: admHeaders() });
+      const html = await res.text();
+      expect(html).toContain("plank-admin-sidebar");
+      expect(html).toContain("Plank Admin");
+      // Section headings
+      expect(html).toContain(">Overview<");
+      expect(html).toContain(">Forums<");
+      expect(html).toContain(">Users<");
+      expect(html).toContain(">Customization<");
+      // Representative links from each section
+      expect(html).toContain(`href="/admin"`);
+      expect(html).toContain(`href="/admin/forums"`);
+      expect(html).toContain(`href="/admin/auth"`);
+      expect(html).toContain(`href="/admin/users"`);
+      expect(html).toContain(`href="/admin/bans"`);
+      expect(html).toContain(`href="/admin/config"`);
+      expect(html).toContain(`href="/admin/ranks"`);
+      expect(html).toContain(`href="/admin/smilies"`);
+      expect(html).toContain(`href="/admin/words"`);
+      // Return-to-forum link in the sidebar footer
+      expect(html).toContain("Return to forum");
+    });
+
+    it("highlights the active sidebar item by exact path", async () => {
+      const res = await app.request("/admin/config", { headers: admHeaders() });
+      const html = await res.text();
+      // The /admin/config item should be flagged active; /admin should not.
+      expect(html).toMatch(
+        /plank-admin-nav-item plank-admin-nav-item-active"><a href="\/admin\/config"/
+      );
+      expect(html).not.toMatch(
+        /plank-admin-nav-item plank-admin-nav-item-active"><a href="\/admin"/
+      );
+    });
+
+    it("highlights Permissions for /admin/auth/forum/:id (prefix match)", async () => {
+      // Pick any forum to navigate into.
+      const { data: forum } = await adminDb
+        .from("forums")
+        .select("id")
+        .limit(1)
+        .single();
+      const res = await app.request(`/admin/auth/forum/${forum!.id}`, {
+        headers: admHeaders(),
+      });
+      const html = await res.text();
+      // /admin/auth* should light up its sidebar entry.
+      expect(html).toMatch(
+        /plank-admin-nav-item plank-admin-nav-item-active"><a href="\/admin\/auth"/
+      );
+    });
+
+    it("references the theme stylesheet by an absolute path", async () => {
+      // The original page_header.tpl used `../templates/Solaris/...` —
+      // that path broke for any URL deeper than /admin/foo. Our shell
+      // uses an absolute href, so this regresses if anyone reintroduces
+      // the relative form.
+      const res = await app.request("/admin/auth", { headers: admHeaders() });
+      const html = await res.text();
+      expect(html).toContain('href="/templates/Solaris/admin/subSilver.css"');
+      expect(html).not.toContain('href="../templates');
+    });
+  });
+
   describe("board configuration", () => {
     it("renders config page", async () => {
       const res = await app.request("/admin/config", { headers: admHeaders() });
