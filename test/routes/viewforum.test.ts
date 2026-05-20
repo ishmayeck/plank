@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config } from "dotenv";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import app from "../../src/app.js";
+import { cleanupTestUser } from "../util/users.js";
 
 config({ path: ".env" });
 
@@ -17,13 +18,20 @@ beforeAll(async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // supabase db reset doesn't truncate auth.users — defend against
+  // leftover state from prior runs so createUser doesn't return null.
+  await cleanupTestUser(adminDb, "ForumTester", "forumtest@plank.local");
+
   // Create a test user and some topics
-  const { data: authData } = await adminDb.auth.admin.createUser({
+  const { data: authData, error: authErr } = await adminDb.auth.admin.createUser({
     email: "forumtest@plank.local",
     password: "testpass",
     email_confirm: true,
   });
-  const userId = authData.user!.id;
+  if (authErr || !authData?.user) {
+    throw new Error(`createUser failed: ${authErr?.message ?? "no user returned"}`);
+  }
+  const userId = authData.user.id;
   cleanupIds.users.push(userId);
 
   await adminDb.from("profiles").insert({
@@ -31,10 +39,12 @@ beforeAll(async () => {
     username: "ForumTester",
   });
 
-  // Get first forum
+  // Get first forum (ordered, so previous test files that added/removed
+  // forums don't change which one we land on).
   const { data: forum } = await adminDb
     .from("forums")
     .select("id")
+    .order("id", { ascending: true })
     .limit(1)
     .single();
 
@@ -100,6 +110,7 @@ describe("View Forum", () => {
     const { data: forum } = await adminDb
       .from("forums")
       .select("id")
+      .order("id", { ascending: true })
       .limit(1)
       .single();
 
@@ -116,6 +127,7 @@ describe("View Forum", () => {
     const { data: forum } = await adminDb
       .from("forums")
       .select("id")
+      .order("id", { ascending: true })
       .limit(1)
       .single();
 

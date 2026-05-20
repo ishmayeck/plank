@@ -187,6 +187,55 @@ describe("Database Schema", () => {
     await db.auth.admin.deleteUser(userId);
   });
 
+  it("deletes a topic automatically when its last post is removed", async () => {
+    const { data: authData } = await db.auth.admin.createUser({
+      email: "orphan-trigger@plank.local",
+      password: "testpassword123",
+      email_confirm: true,
+    });
+    const userId = authData.user!.id;
+    await db.from("profiles").insert({ id: userId, username: "OrphanTrigger" });
+
+    const { data: forum } = await db.from("forums").select("id").limit(1).single();
+
+    // Topic with two posts.
+    const { data: topic } = await db
+      .from("topics")
+      .insert({ forum_id: forum!.id, topic_title: "Orphan trigger", topic_poster: userId })
+      .select()
+      .single();
+    const { data: post1 } = await db
+      .from("posts")
+      .insert({ topic_id: topic!.id, forum_id: forum!.id, poster_id: userId })
+      .select()
+      .single();
+    const { data: post2 } = await db
+      .from("posts")
+      .insert({ topic_id: topic!.id, forum_id: forum!.id, poster_id: userId })
+      .select()
+      .single();
+
+    // Delete the first one — topic still has the second post, must survive.
+    await db.from("posts").delete().eq("id", post1!.id);
+    const { data: stillThere } = await db
+      .from("topics")
+      .select("id")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(stillThere?.id).toBe(topic!.id);
+
+    // Delete the second one — topic is now empty, trigger must remove it.
+    await db.from("posts").delete().eq("id", post2!.id);
+    const { data: gone } = await db
+      .from("topics")
+      .select("id")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(gone).toBeNull();
+
+    await db.auth.admin.deleteUser(userId);
+  });
+
   it("forums reference categories correctly", async () => {
     const { data, error } = await db
       .from("forums")
