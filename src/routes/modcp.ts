@@ -6,6 +6,7 @@ import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
+import { loadUserGroupAcls, canMod, type ForumAclMap } from "../lib/permissions.js";
 
 const modcp = new Hono();
 
@@ -28,11 +29,22 @@ function forbiddenPage(user: any): string {
 
 modcp.get("/modcp", async (c) => {
   const user = c.get("user");
-  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
+  if (!user) return c.html(forbiddenPage(user), 403);
+  const supabase = c.get("supabase");
+  const userAcls = await loadUserGroupAcls(supabase, user);
 
   const mode = c.req.query("mode") ?? "";
   const forumId = parseInt(c.req.query("f") ?? "0", 10);
   const topicId = parseInt(c.req.query("t") ?? "0", 10);
+
+  // Per-forum mod check. We need forumId to know which forum's mod
+  // bit to consult; if the caller didn't tell us, fall back to the
+  // global mod/admin gate so the user gets the right error page.
+  if (forumId) {
+    if (!canMod(forumId, user, userAcls)) return c.html(forbiddenPage(user), 403);
+  } else if (!isModOrAdmin(user)) {
+    return c.html(forbiddenPage(user), 403);
+  }
 
   // ── Single-topic actions from viewtopic buttons ──
   if (mode && topicId && forumId) {
@@ -76,8 +88,6 @@ modcp.get("/modcp", async (c) => {
   }
 
   if (!forumId) return c.text("Forum not specified", 400);
-
-  const supabase = c.get("supabase");
 
   const { data: forum } = await supabase
     .from("forums")
@@ -158,10 +168,20 @@ modcp.get("/modcp", async (c) => {
 
 modcp.post("/modcp", async (c) => {
   const user = c.get("user");
-  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
+  if (!user) return c.html(forbiddenPage(user), 403);
 
   const body = await c.req.parseBody();
   const forumId = parseInt(body.f as string, 10);
+
+  // Per-forum mod check. Falls through to the global gate when the
+  // form didn't include a forum id (defensive — shouldn't happen).
+  const supabaseForAcl = c.get("supabase");
+  const userAcls = await loadUserGroupAcls(supabaseForAcl, user);
+  if (forumId) {
+    if (!canMod(forumId, user, userAcls)) return c.html(forbiddenPage(user), 403);
+  } else if (!isModOrAdmin(user)) {
+    return c.html(forbiddenPage(user), 403);
+  }
 
   // Get selected topic IDs
   const topicIds: number[] = [];
@@ -415,7 +435,7 @@ async function handleMoveConfirm(
 
 modcp.get("/modcp/split", async (c) => {
   const user = c.get("user");
-  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
+  if (!user) return c.html(forbiddenPage(user), 403);
 
   const topicId = parseInt(c.req.query("t") ?? "0", 10);
   if (!topicId) return c.text("Topic not specified", 400);
@@ -429,6 +449,9 @@ modcp.get("/modcp/split", async (c) => {
     .maybeSingle();
 
   if (!topic) return c.text("Topic not found", 404);
+
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  if (!canMod(topic.forum_id, user, userAcls)) return c.html(forbiddenPage(user), 403);
 
   const { data: posts } = await supabase
     .from("posts")
@@ -681,21 +704,26 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
 
 modcp.get("/modcp/ip", async (c) => {
   const user = c.get("user");
-  if (!isModOrAdmin(user)) return c.html(forbiddenPage(user), 403);
+  if (!user) return c.html(forbiddenPage(user), 403);
 
   const postId = parseInt(c.req.query("p") ?? "0", 10);
   if (!postId) return c.text("Post not specified", 400);
 
   const adminDb = getSupabaseAdmin();
 
-  // Get the post's IP
+  // Get the post's IP (plus its forum, so we can check mod authority
+  // for that specific forum).
   const { data: post } = await adminDb
     .from("posts")
-    .select("id, poster_id, poster_ip, topic_id")
+    .select("id, poster_id, poster_ip, topic_id, forum_id")
     .eq("id", postId)
     .maybeSingle();
 
   if (!post) return c.text("Post not found", 404);
+
+  const supabaseForAcl = c.get("supabase");
+  const ipAcls = await loadUserGroupAcls(supabaseForAcl, user);
+  if (!canMod(post.forum_id, user, ipAcls)) return c.html(forbiddenPage(user), 403);
 
   const ip = post.poster_ip ?? "Unknown";
 

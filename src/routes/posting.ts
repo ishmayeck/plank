@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
+import { loadUserGroupAcls, canDo, canMod, type ForumAclMap } from "../lib/permissions.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup, type MarkupString } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
@@ -29,6 +30,8 @@ posting.get("/posting", async (c) => {
   const mode = c.req.query("mode") ?? "newtopic";
   const supabase = c.get("supabase");
 
+  const userAcls = await loadUserGroupAcls(supabase, user);
+
   let forumId: number | null = null;
   let topicId: number | null = null;
   let postId: number | null = null;
@@ -38,72 +41,111 @@ posting.get("/posting", async (c) => {
   let postTitle = "Post a new topic";
   let currentTopicType = 0;
   let isFirstPost = false;
+  let forumRow: any = null;
 
   if (mode === "newtopic") {
     forumId = parseInt(c.req.query("f") ?? "0", 10);
     isFirstPost = true;
     const { data: forum } = await supabase
       .from("forums")
-      .select("forum_name")
+      .select("*")
       .eq("id", forumId)
       .maybeSingle();
-    forumName = forum?.forum_name ?? "";
+    if (!forum) return c.text("Forum not found", 404);
+    if (!canDo("view", forum, user, userAcls)) return c.text("Forum not found", 404);
+    if (!canDo("read", forum, user, userAcls)) return c.text("You do not have permission to read this forum.", 403);
+    if (!canDo("post", forum, user, userAcls)) return c.text("You do not have permission to post new topics in this forum.", 403);
+    forumRow = forum;
+    forumName = forum.forum_name ?? "";
   } else if (mode === "reply") {
     topicId = parseInt(c.req.query("t") ?? "0", 10);
     const { data: topic } = await supabase
       .from("topics")
-      .select("*, forums(forum_name)")
+      .select("*, forums(*)")
       .eq("id", topicId)
       .maybeSingle();
     if (!topic) return c.text("Topic not found", 404);
+    const f = (topic as any).forums;
+    if (!canDo("view", f, user, userAcls)) return c.text("Topic not found", 404);
+    if (!canDo("read", f, user, userAcls)) return c.text("You do not have permission to read this forum.", 403);
+    if (!canDo("reply", f, user, userAcls)) return c.text("You do not have permission to reply in this forum.", 403);
+    if (topic.topic_status === 1 && !canMod(f.id, user, userAcls)) {
+      return c.text("This topic is locked.", 403);
+    }
+    forumRow = f;
     forumId = topic.forum_id;
-    forumName = topic.forums?.forum_name ?? "";
+    forumName = f?.forum_name ?? "";
     subject = `Re: ${topic.topic_title}`;
     postTitle = "Post a reply";
   } else if (mode === "quote") {
     postId = parseInt(c.req.query("p") ?? "0", 10);
     const { data: post } = await supabase
       .from("posts")
-      .select("*, posts_text(*), poster:profiles!posts_poster_id_fkey(username), topics!posts_topic_id_fkey(topic_title, forum_id, forums(forum_name))")
+      .select("*, posts_text(*), poster:profiles!posts_poster_id_fkey(username), topics!posts_topic_id_fkey(topic_title, topic_status, forum_id, forums(*))")
       .eq("id", postId)
       .maybeSingle();
     if (!post) return c.text("Post not found", 404);
+    const f = (post as any).topics?.forums;
+    if (!f) return c.text("Post not found", 404);
+    if (!canDo("view", f, user, userAcls)) return c.text("Post not found", 404);
+    if (!canDo("read", f, user, userAcls)) return c.text("You do not have permission to read this forum.", 403);
+    if (!canDo("reply", f, user, userAcls)) return c.text("You do not have permission to reply in this forum.", 403);
+    if ((post as any).topics?.topic_status === 1 && !canMod(f.id, user, userAcls)) {
+      return c.text("This topic is locked.", 403);
+    }
+    forumRow = f;
     topicId = post.topic_id;
-    forumId = post.topics?.forum_id ?? 0;
-    forumName = post.topics?.forums?.forum_name ?? "";
-    subject = `Re: ${post.topics?.topic_title ?? ""}`;
-    message = `[quote="${post.poster?.username ?? "Guest"}"]${post.posts_text?.post_text ?? ""}[/quote]\n`;
+    forumId = (post as any).topics?.forum_id ?? 0;
+    forumName = f?.forum_name ?? "";
+    subject = `Re: ${(post as any).topics?.topic_title ?? ""}`;
+    message = `[quote="${(post as any).poster?.username ?? "Guest"}"]${(post as any).posts_text?.post_text ?? ""}[/quote]\n`;
     postTitle = "Post a reply";
   } else if (mode === "editpost") {
     postId = parseInt(c.req.query("p") ?? "0", 10);
     const { data: post } = await supabase
       .from("posts")
-      .select("*, posts_text(*), topics!posts_topic_id_fkey(id, topic_title, topic_type, topic_first_post_id, forum_id, forums(forum_name))")
+      .select("*, posts_text(*), topics!posts_topic_id_fkey(id, topic_title, topic_type, topic_status, topic_first_post_id, forum_id, forums(*))")
       .eq("id", postId)
       .maybeSingle();
     if (!post) return c.text("Post not found", 404);
-    // Check permission: own post or mod/admin
-    if (post.poster_id !== user.id && !isModOrAdmin(user)) {
-      return c.text("Forbidden", 403);
+    const f = (post as any).topics?.forums;
+    if (!f) return c.text("Post not found", 404);
+    if (!canDo("view", f, user, userAcls)) return c.text("Post not found", 404);
+    if (!canDo("read", f, user, userAcls)) return c.text("You do not have permission to read this forum.", 403);
+    // Own post + auth_edit, OR per-forum mod (which covers global mod/admin).
+    if (post.poster_id === user.id) {
+      if (!canDo("edit", f, user, userAcls)) {
+        return c.text("You do not have permission to edit posts in this forum.", 403);
+      }
+    } else if (!canMod(f.id, user, userAcls)) {
+      return c.text("You cannot edit another user's post.", 403);
     }
+    forumRow = f;
     topicId = post.topic_id;
-    forumId = post.topics?.forum_id ?? 0;
-    forumName = post.topics?.forums?.forum_name ?? "";
-    subject = post.posts_text?.post_subject ?? "";
-    message = post.posts_text?.post_text ?? "";
+    forumId = (post as any).topics?.forum_id ?? 0;
+    forumName = f?.forum_name ?? "";
+    subject = (post as any).posts_text?.post_subject ?? "";
+    message = (post as any).posts_text?.post_text ?? "";
     postTitle = "Edit post";
-    currentTopicType = post.topics?.topic_type ?? 0;
-    isFirstPost = post.topics?.topic_first_post_id === post.id;
+    currentTopicType = (post as any).topics?.topic_type ?? 0;
+    isFirstPost = (post as any).topics?.topic_first_post_id === post.id;
   } else if (mode === "delete") {
     postId = parseInt(c.req.query("p") ?? "0", 10);
     const { data: post } = await supabase
       .from("posts")
-      .select("*, topics!posts_topic_id_fkey(forum_id)")
+      .select("*, topics!posts_topic_id_fkey(forum_id, forums(*))")
       .eq("id", postId)
       .maybeSingle();
     if (!post) return c.text("Post not found", 404);
-    if (post.poster_id !== user.id && !isModOrAdmin(user)) {
-      return c.text("Forbidden", 403);
+    const f = (post as any).topics?.forums;
+    if (!f) return c.text("Post not found", 404);
+    if (!canDo("view", f, user, userAcls)) return c.text("Post not found", 404);
+    if (post.poster_id === user.id) {
+      if (!canDo("delete", f, user, userAcls)) {
+        return c.text("You do not have permission to delete posts in this forum.", 403);
+      }
+    } else if (!canMod(f.id, user, userAcls)) {
+      return c.text("You cannot delete another user's post.", 403);
     }
     return c.html(renderConfirmPage({
       c,
@@ -191,7 +233,10 @@ posting.post("/posting", async (c) => {
   const enableSig = body.attach_sig === "on";
   const enableSmilies = body.disable_smilies !== "on";
   const enableBBCode = body.disable_bbcode !== "on";
-  const topicType = isModOrAdmin(user) ? parseInt(body.topictype as string, 10) || 0 : 0;
+  const requestedTopicType = parseInt(body.topictype as string, 10) || 0;
+
+  const supabaseForAcl = c.get("supabase");
+  const userAcls = await loadUserGroupAcls(supabaseForAcl, user);
 
   // Collect current poll options from form
   function collectPollOptions(): string[] {
@@ -231,7 +276,7 @@ posting.post("/posting", async (c) => {
 
     const isFirst = mode === "newtopic";
     const topicTypeToggle = (isFirst && isModOrAdmin(user))
-      ? buildTopicTypeToggle(topicType)
+      ? buildTopicTypeToggle(requestedTopicType)
       : "";
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
 
@@ -307,10 +352,30 @@ posting.post("/posting", async (c) => {
   const messageHtml = enableBBCode ? parseBBCode(message) : message;
 
   if (mode === "newtopic") {
+    // Re-check permissions at submit time — the form may have been
+    // open while group membership changed.
+    const supabase = c.get("supabase");
+    const { data: forum } = await supabase
+      .from("forums")
+      .select("*")
+      .eq("id", forumId)
+      .maybeSingle();
+    if (!forum) return c.text("Forum not found", 404);
+    if (!canDo("view", forum, user, userAcls)) return c.text("Forum not found", 404);
+    if (!canDo("post", forum, user, userAcls)) {
+      return c.text("You do not have permission to post new topics in this forum.", 403);
+    }
+
+    // sticky/announce/global topic types each have their own gate.
+    // Silently downgrade rather than rejecting outright (matches
+    // phpBB2's behaviour: ignore disallowed flags, keep the post).
+    let topicType = 0;
+    if (requestedTopicType === 1 && canDo("sticky", forum, user, userAcls)) topicType = 1;
+    else if (requestedTopicType === 2 && canDo("announce", forum, user, userAcls)) topicType = 2;
+    else if (requestedTopicType === 3 && user.userLevel === 1 /* USER_LEVEL.ADMIN */) topicType = 3;
+
     if (!subject.trim()) {
-      const supabase = c.get("supabase");
       const smilies = await loadSmilies(supabase);
-      const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
       return c.html(renderPostingForm({
         c,
         user, mode, forumId, topicId, postId,
@@ -328,9 +393,7 @@ posting.post("/posting", async (c) => {
         ([k, v]) => k.match(/^poll_option_text\[\d+\]$/) && (v as string).trim()
       ).length + ((body.add_poll_option_text as string)?.trim() ? 1 : 0);
       if (optCount < 2) {
-        const supabase = c.get("supabase");
         const smilies = await loadSmilies(supabase);
-        const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
         const pollOpts: string[] = [];
         for (const [k, v] of Object.entries(body)) {
           if (k.match(/^poll_option_text\[\d+\]$/)) pollOpts.push((v as string) ?? "");
@@ -341,7 +404,7 @@ posting.post("/posting", async (c) => {
           forumName: forum?.forum_name ?? "", subject, message,
           postTitle: "Post a new topic",
           smilies, error: "You must enter at least two poll options.",
-          topicTypeToggle: isModOrAdmin(user) ? buildTopicTypeToggle(topicType) : undefined,
+          topicTypeToggle: isModOrAdmin(user) ? buildTopicTypeToggle(requestedTopicType) : undefined,
           showPoll: true, pollTitle: pollTitleCheck, pollOptions: pollOpts,
           pollLength: parseInt(body.poll_length as string, 10) || 0,
           jumpboxHtml: await fetchAndRenderJumpbox(supabase, undefined, { user }),
@@ -404,7 +467,7 @@ posting.post("/posting", async (c) => {
     const addPollOption = (body.add_poll_option_text as string)?.trim() ?? "";
     if (addPollOption) pollOptionTexts.push(addPollOption);
 
-    if (pollTitle && pollOptionTexts.length >= 2) {
+    if (pollTitle && pollOptionTexts.length >= 2 && canDo("pollcreate", forum, user, userAcls)) {
       const pollLengthDays = parseInt(body.poll_length as string, 10) || 0;
       const { data: poll } = await adminDb
         .from("poll_questions")
@@ -440,6 +503,24 @@ posting.post("/posting", async (c) => {
     }));
 
   } else if (mode === "reply" || mode === "quote") {
+    // Re-check permissions at submit time.
+    const supabase = c.get("supabase");
+    const { data: topic } = await supabase
+      .from("topics")
+      .select("topic_status, forum_id, forums(*)")
+      .eq("id", topicId)
+      .maybeSingle();
+    if (!topic) return c.text("Topic not found", 404);
+    const forum = (topic as any).forums;
+    if (!forum) return c.text("Topic not found", 404);
+    if (!canDo("view", forum, user, userAcls)) return c.text("Topic not found", 404);
+    if (!canDo("reply", forum, user, userAcls)) {
+      return c.text("You do not have permission to reply in this forum.", 403);
+    }
+    if (topic.topic_status === 1 && !canMod(forum.id, user, userAcls)) {
+      return c.text("This topic is locked.", 403);
+    }
+
     // Create reply post
     const { data: post, error: postErr } = await adminDb
       .from("posts")
@@ -491,16 +572,23 @@ posting.post("/posting", async (c) => {
     }));
 
   } else if (mode === "editpost") {
-    // Verify permission
+    // Re-check permission against the current ACL state.
     const { data: existingPost } = await adminDb
       .from("posts")
-      .select("poster_id")
+      .select("poster_id, topic_id, topics!posts_topic_id_fkey(forum_id, topic_first_post_id, forums(*))")
       .eq("id", postId)
       .maybeSingle();
 
     if (!existingPost) return c.text("Post not found", 404);
-    if (existingPost.poster_id !== user.id && !isModOrAdmin(user)) {
-      return c.text("Forbidden", 403);
+    const editForum = (existingPost as any).topics?.forums;
+    if (!editForum) return c.text("Post not found", 404);
+    if (!canDo("view", editForum, user, userAcls)) return c.text("Post not found", 404);
+    if (existingPost.poster_id === user.id) {
+      if (!canDo("edit", editForum, user, userAcls)) {
+        return c.text("You do not have permission to edit posts in this forum.", 403);
+      }
+    } else if (!canMod(editForum.id, user, userAcls)) {
+      return c.text("You cannot edit another user's post.", 403);
     }
 
     // Update post metadata
@@ -529,16 +617,18 @@ posting.post("/posting", async (c) => {
       post_text_html: messageHtml,
     }).eq("post_id", postId);
 
-    // Update topic type if editing first post and user is admin
-    if (topicType !== undefined && isModOrAdmin(user)) {
-      const { data: editedPost } = await adminDb
-        .from("posts")
-        .select("topic_id, topics!posts_topic_id_fkey(topic_first_post_id)")
-        .eq("id", postId)
-        .maybeSingle();
-      if (editedPost?.topics?.topic_first_post_id === postId) {
-        await adminDb.from("topics").update({ topic_type: topicType }).eq("id", editedPost.topic_id);
-      }
+    // Update topic type if editing the first post. The requested type
+    // is gated per-forum, same rules as creation: sticky/announce need
+    // their bit on this forum; global needs admin.
+    if (
+      requestedTopicType !== undefined &&
+      (existingPost as any).topics?.topic_first_post_id === postId
+    ) {
+      let allowedType = 0;
+      if (requestedTopicType === 1 && canDo("sticky", editForum, user, userAcls)) allowedType = 1;
+      else if (requestedTopicType === 2 && canDo("announce", editForum, user, userAcls)) allowedType = 2;
+      else if (requestedTopicType === 3 && user.userLevel === 1 /* USER_LEVEL.ADMIN */) allowedType = 3;
+      await adminDb.from("topics").update({ topic_type: allowedType }).eq("id", existingPost.topic_id);
     }
 
     // Find the topic for redirect
@@ -563,13 +653,20 @@ posting.post("/posting", async (c) => {
     const deletePostId = parseInt(c.req.query("p") ?? body.post_id as string, 10);
     const { data: post } = await adminDb
       .from("posts")
-      .select("*, topics!posts_topic_id_fkey(topic_first_post_id, forum_id)")
+      .select("*, topics!posts_topic_id_fkey(topic_first_post_id, forum_id, forums(*))")
       .eq("id", deletePostId)
       .maybeSingle();
 
     if (!post) return c.text("Post not found", 404);
-    if (post.poster_id !== user.id && !isModOrAdmin(user)) {
-      return c.text("Forbidden", 403);
+    const delForum = (post as any).topics?.forums;
+    if (!delForum) return c.text("Post not found", 404);
+    if (!canDo("view", delForum, user, userAcls)) return c.text("Post not found", 404);
+    if (post.poster_id === user.id) {
+      if (!canDo("delete", delForum, user, userAcls)) {
+        return c.text("You do not have permission to delete posts in this forum.", 403);
+      }
+    } else if (!canMod(delForum.id, user, userAcls)) {
+      return c.text("You cannot delete another user's post.", 403);
     }
 
     // Cancel → go back to the topic

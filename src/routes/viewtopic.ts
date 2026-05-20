@@ -4,11 +4,10 @@ import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
-import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
-import { loadUserGroupAcls, canDo } from "../lib/permissions.js";
+import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 
 const POSTS_PER_PAGE = 15;
 
@@ -134,9 +133,14 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   );
 
   const isLocked = topic.topic_status === 1;
-  const canReply = !isLocked && !!user;
-  const canPost = !!user;
-  const isTopicMod = isModOrAdmin(user);
+  // Per-forum permission checks. canReply / canPost reflect what the
+  // viewer can actually do on this specific forum — they drive the
+  // "Reply" / "New topic" buttons in the topic header.
+  const canReply = !isLocked && canDo("reply", parentForum, user, userAcls);
+  const canPost = canDo("post", parentForum, user, userAcls);
+  // Per-forum mod: drives the lock/move/split/delete topic-admin
+  // toolbar and the edit/delete buttons on other users' posts.
+  const isTopicMod = canMod(topic.forum_id, user, userAcls);
 
   // Build topic moderation controls for moderators/admins
   let topicAdminHtml = markup("");
@@ -242,17 +246,23 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         ? markup(`<br /><img src="${escapeHtml(poster.user_avatar)}" alt="" /><br />`)
         : markup("");
 
-      // Action buttons (based on permissions)
+      // Action buttons (based on permissions). The edit/delete icons
+      // appear when either: the viewer is the post author and has the
+      // per-forum auth_edit / auth_delete bit, or they have mod
+      // authority over this forum.
       const isOwnPost = user && poster?.id === user.id;
-      const isMod = isModOrAdmin(user);
+      const canEditButton =
+        (isOwnPost && canDo("edit", parentForum, user, userAcls)) || isTopicMod;
+      const canDeleteButton =
+        (isOwnPost && canDo("delete", parentForum, user, userAcls)) || isTopicMod;
 
-      const quoteImg = user && !isLocked
+      const quoteImg = user && !isLocked && canReply
         ? markup(`<a href="/posting?mode=quote&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_quote.gif" alt="Reply with quote" border="0" /></a>`)
         : markup("");
-      const editImg = isOwnPost || isMod
+      const editImg = canEditButton
         ? markup(`<a href="/posting?mode=editpost&p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_edit.gif" alt="Edit" border="0" /></a>`)
         : markup("");
-      const deleteImg = isOwnPost || isMod
+      const deleteImg = canDeleteButton
         ? markup(`<a href="/posting?mode=delete&p=${post.id}"><img src="templates/Solaris/images/icon_delete.gif" alt="Delete" border="0" /></a>`)
         : markup("");
 
@@ -281,7 +291,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,
         DELETE_IMG: deleteImg,
-        IP_IMG: isMod
+        IP_IMG: isTopicMod
           ? markup(`<a href="/modcp/ip?p=${post.id}"><img src="templates/Solaris/images/lang_english/icon_ip.gif" alt="IP" border="0" /></a>`)
           : markup(""),
         PROFILE_IMG: markup(`<a href="/profile/${encodeURIComponent(poster?.id ?? "")}"><img src="templates/Solaris/images/lang_english/icon_profile.gif" alt="Profile" border="0" /></a>`),

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup, type MarkupString } from "../lib/markup.js";
 import { loginRedirect } from "./auth.js";
+import { loadUserGroupAcls, canDo } from "../lib/permissions.js";
 const poll = new Hono();
 
 // ─── Vote Submission ──────────────────────────────────────────
@@ -21,6 +22,24 @@ poll.post("/poll", async (c) => {
   }
 
   const adminDb = getSupabaseAdmin();
+  const supabase = c.get("supabase");
+
+  // Per-forum auth_vote gate. Fetch the topic + its parent forum to
+  // resolve the ACL — the user might be allowed to view the topic but
+  // not vote in its forum (e.g. read-only group permission).
+  const { data: pollTopic } = await supabase
+    .from("topics")
+    .select("forum_id, forums(*)")
+    .eq("id", topicId)
+    .maybeSingle();
+  if (!pollTopic) return c.text("Topic not found", 404);
+  const pollForum = (pollTopic as any).forums;
+  if (!pollForum) return c.text("Topic not found", 404);
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  if (!canDo("view", pollForum, user, userAcls)) return c.text("Topic not found", 404);
+  if (!canDo("vote", pollForum, user, userAcls)) {
+    return c.text("You do not have permission to vote in this forum.", 403);
+  }
 
   // Get the poll for this topic — most topics have no poll, so 0 rows
   // is the common case (would otherwise log a Supabase error per call).
