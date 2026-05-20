@@ -275,24 +275,20 @@ Chunks are ordered by dependency — each builds on the previous.
 
 ---
 
-## Chunk 17: Per-Forum ACL (Group-Based Permissions)
+## Chunk 17: Per-Forum ACL (Group-Based Permissions) ✅
 
 **Goal**: Implement phpBB2's group-based, per-forum permission system.
 
-phpBB2 used a dual system: `user_level` for global admin/mod gating, plus group-based ACLs for per-forum permissions (`auth_access` table). Currently we only have the `user_level` check. This chunk adds the full permission layer.
+phpBB2 used a dual system: `user_level` for global admin/mod gating, plus group-based ACLs for per-forum permissions (`auth_access` table). Before this chunk the runtime only checked `user_level`; the schema columns existed but the gate functions were stubs ("simplified: deny unless admin").
 
-- [ ] Permission checking module (`lib/auth.ts`) implementing phpBB2's three auth levels:
-  - `AUTH_ACL`: check user's group memberships → `auth_access` permission bits for that forum
-  - `AUTH_MOD`: ACL check OR `user_level >= MOD`
-  - `AUTH_ADMIN`: `user_level == ADMIN`
-- [ ] Per-forum permission fields on `forums` table: `auth_view`, `auth_read`, `auth_post`, `auth_reply`, `auth_edit`, `auth_delete`, `auth_sticky`, `auth_announce`, `auth_vote`, `auth_pollcreate` (each stores the required auth level: ALL, REG, ACL, MOD, ADMIN)
-- [ ] `auth_access` table population: admin UI for setting group permissions per forum
-- [ ] Auto-sync `user_level` with group membership: joining a group with `auth_mod` promotes to MOD, leaving all mod groups reverts to USER
-- [ ] Apply permission checks in route handlers: viewforum (auth_view, auth_read), posting (auth_post, auth_reply), topic actions (auth_sticky, auth_announce), poll (auth_vote, auth_pollcreate)
-- [ ] Admin permission management page (`admin/admin_ug_auth.tpl`) — matrix UI for setting per-forum permissions per group
-- [ ] Forum-level permission display (lock icons, "you cannot post" messages)
+- [x] Permission module `src/lib/permissions.ts` with `AUTH_LEVEL` constants (0=ALL, 1=REG, 2=ACL, 3=MOD, 5=ADMIN — phpBB2 numbering), `loadUserGroupAcls` (one round-trip across `user_group` × `auth_access`, OR'd per-forum), `canDo(action, forum, user, acls)`, `canMod(forumId, user, acls)`, `filterViewable`.
+- [x] Schema already had the columns — used as-is. No auto-sync of `user_level` from group membership: per-forum mod status is computed at request time (`canMod` OR-s the group bit with the global level), avoiding trigger-based drift.
+- [x] Read paths: index filters viewable forums, viewforum/viewtopic gate `auth_view` (404, no existence leak) and `auth_read` (403); the jumpbox/footer auth list now reflects reality.
+- [x] Write paths: posting GET/POST gate per mode (newtopic→auth_post, reply→auth_reply, editpost/delete→own-post-with-bit OR per-forum mod), with sticky/announce checked against `auth_sticky`/`auth_announce`. Poll vote gates `auth_vote`, poll create gates `auth_pollcreate`. modcp's entry gates and IP-display use `canMod(forumId)` instead of global `isModOrAdmin`.
+- [x] Admin matrix UI at `/admin/auth` → `/admin/auth/forum/:id` (per-forum required-level dropdowns) and `/admin/auth/group/:id` (per-group access matrix). Uses the original phpBB2 `auth_forum_body.tpl` and `auth_ug_body.tpl` unmodified. POST handlers clamp tampered values and clear all-unchecked rows from `auth_access`.
+- [x] Tests: `test/lib/permissions.test.ts` (31 unit tests covering the matrix), `test/security/permissions.test.ts` (14 end-to-end tests with fixture forums and groups), plus 10 new admin-route tests in `test/routes/admin.test.ts`. Full suite: 311 tests.
 
-**Tests**: Permission matrix enforcement (user in group can post in permitted forum, cannot in restricted), auth level escalation (ACL < MOD < ADMIN), auto-sync of user_level on group changes, admin permission UI saves correctly.
+Deferred (decided against during planning): per-user permission overrides via single-user groups. The schema column `groups.group_single_user` is still there for the day we want them; no per-user override mechanism is wired up yet. Bring it back when an actual use case forces the issue.
 
 ---
 
