@@ -122,7 +122,7 @@ posting.get("/posting", async (c) => {
   const topicTypeToggle = (isFirstPost && isModOrAdmin(user))
     ? buildTopicTypeToggle(currentTopicType)
     : "";
-  const jumpboxHtml = await fetchAndRenderJumpbox(supabase);
+  const jumpboxHtml = await fetchAndRenderJumpbox(supabase, undefined, { user });
   const html = renderPostingForm({
     c,
     user,
@@ -245,7 +245,7 @@ posting.post("/posting", async (c) => {
       pollTitle: (body.poll_title as string) ?? "",
       pollOptions: pollOpts,
       pollLength: parseInt(body.poll_length as string, 10) || 0,
-      jumpboxHtml: await fetchAndRenderJumpbox(supabase),
+      jumpboxHtml: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     }));
   }
 
@@ -280,7 +280,7 @@ posting.post("/posting", async (c) => {
       pollTitle: (body.poll_title as string) ?? "",
       pollOptions: collectPollOptions(),
       pollLength: parseInt(body.poll_length as string, 10) || 0,
-      jumpboxHtml: await fetchAndRenderJumpbox(supabase),
+      jumpboxHtml: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     });
     return c.html(html);
   }
@@ -297,7 +297,7 @@ posting.post("/posting", async (c) => {
       forumName: forum?.forum_name ?? "", subject, message,
       postTitle: mode === "newtopic" ? "Post a new topic" : mode === "editpost" ? "Edit post" : "Post a reply",
       smilies, error: "You must enter a message when posting.", topicReviewHtml: reviewHtml,
-      jumpboxHtml: await fetchAndRenderJumpbox(supabase),
+      jumpboxHtml: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     }));
   }
 
@@ -317,7 +317,7 @@ posting.post("/posting", async (c) => {
         forumName: forum?.forum_name ?? "", subject, message,
         postTitle: "Post a new topic",
         smilies, error: "Subject must not be empty.",
-        jumpboxHtml: await fetchAndRenderJumpbox(supabase),
+        jumpboxHtml: await fetchAndRenderJumpbox(supabase, undefined, { user }),
       }));
     }
 
@@ -344,7 +344,7 @@ posting.post("/posting", async (c) => {
           topicTypeToggle: isModOrAdmin(user) ? buildTopicTypeToggle(topicType) : undefined,
           showPoll: true, pollTitle: pollTitleCheck, pollOptions: pollOpts,
           pollLength: parseInt(body.poll_length as string, 10) || 0,
-          jumpboxHtml: await fetchAndRenderJumpbox(supabase),
+          jumpboxHtml: await fetchAndRenderJumpbox(supabase, undefined, { user }),
         }));
       }
     }

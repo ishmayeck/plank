@@ -8,6 +8,7 @@ import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
+import { loadUserGroupAcls, canDo } from "../lib/permissions.js";
 
 const POSTS_PER_PAGE = 15;
 
@@ -19,10 +20,13 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const user = c.get("user");
   const supabase = c.get("supabase");
 
-  // Fetch topic with forum info
+  // Fetch topic with forum info, including auth_* gates we need to
+  // evaluate before rendering anything.
   const { data: topic, error: topicError } = await supabase
     .from("topics")
-    .select("*, forums(forum_name)")
+    .select(
+      "*, forums(id, forum_name, auth_view, auth_read)"
+    )
     .eq("id", topicId)
     .maybeSingle();
 
@@ -35,10 +39,22 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     return c.redirect(`/viewtopic/${topic.topic_moved_id}`);
   }
 
+  // Per-forum ACL gate. auth_view denial mirrors a 404 (no leakage);
+  // auth_read denial is a 403 because the forum is visible but its
+  // content isn't.
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  const parentForum = (topic as any).forums ?? { id: topic.forum_id };
+  if (!canDo("view", parentForum, user, userAcls)) {
+    return c.text("Topic not found", 404);
+  }
+  if (!canDo("read", parentForum, user, userAcls)) {
+    return c.text("You do not have permission to read posts in this forum.", 403);
+  }
+
   // Increment view count atomically and fetch jumpbox data in parallel
   const [, jumpboxHtml] = await Promise.all([
     supabase.rpc("increment_topic_views", { p_topic_id: topicId }),
-    fetchAndRenderJumpbox(supabase, topic.forum_id),
+    fetchAndRenderJumpbox(supabase, topic.forum_id, { user, acls: userAcls }),
   ]);
 
   const tpl = createPageTemplate({

@@ -99,7 +99,7 @@ pages.get("/faq", async (c) => {
     L_FAQ_TITLE: "Frequently Asked Questions",
     L_BACK_TO_TOP: "Back to top",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   // The template uses <a name="X"> for anchors, which is deprecated in HTML5.
@@ -163,7 +163,7 @@ pages.get("/viewonline", async (c) => {
       .select("*, profiles(id, username, user_level)")
       .gte("session_time", fiveMinAgo)
       .order("session_time", { ascending: false }),
-    fetchAndRenderJumpbox(supabase),
+    fetchAndRenderJumpbox(supabase, undefined, { user }),
   ]);
 
   const registered = (sessions ?? []).filter(

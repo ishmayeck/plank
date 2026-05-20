@@ -123,7 +123,7 @@ modcp.get("/modcp", async (c) => {
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   if (topics) {

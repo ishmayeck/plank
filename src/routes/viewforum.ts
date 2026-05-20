@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, formatUsernameLink } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
-import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
+import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 
 const TOPICS_PER_PAGE = 25;
 const POSTS_PER_PAGE = 15;
@@ -28,6 +28,17 @@ viewforum.get("/viewforum/:id", async (c) => {
     return c.text("Forum not found", 404);
   }
 
+  // Per-forum ACL gate. A user without auth_view sees the same 404 a
+  // user pointed at a nonexistent forum sees — never leak that the
+  // forum exists.
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  if (!canDo("view", forum, user, userAcls)) {
+    return c.text("Forum not found", 404);
+  }
+  if (!canDo("read", forum, user, userAcls)) {
+    return c.text("You do not have permission to read posts in this forum.", 403);
+  }
+
   const tpl = createPageTemplate({
     user: user
       ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
@@ -37,10 +48,11 @@ viewforum.get("/viewforum/:id", async (c) => {
 
   tpl.loadFile("body", "viewforum_body.tpl");
 
-  // Get topic count and jumpbox data in parallel
+  // Get topic count and jumpbox data in parallel. Filter the jumpbox
+  // by the same ACL map we built above.
   const [{ count: totalTopics }, jumpboxHtml] = await Promise.all([
     supabase.from("topics").select("*", { count: "exact", head: true }).eq("forum_id", forumId),
-    fetchAndRenderJumpbox(supabase, forumId),
+    fetchAndRenderJumpbox(supabase, forumId, { user, acls: userAcls }),
   ]);
 
   const offset = (page - 1) * TOPICS_PER_PAGE;
@@ -177,7 +189,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: jumpboxHtml,
-    S_AUTH_LIST: buildAuthList(forum, user),
+    S_AUTH_LIST: buildAuthList(forum, user, userAcls),
 
     // Folder icons
     FOLDER_NEW_IMG: "templates/Solaris/images/folder_new.gif",
@@ -274,33 +286,17 @@ viewforum.get("/viewforum/:id", async (c) => {
   return c.html(renderPage(tpl));
 });
 
-// AUTH_* levels: 0=ALL, 1=REG, 2=PRIVATE (group-based), 3=MOD, 4=ADMIN
-function canDoAction(authLevel: number, user: any): boolean {
-  if (authLevel === 0) return true;
-  if (!user) return false;
-  if (isModOrAdmin(user)) return true; // mods and admins bypass per-forum ACLs
-  if (authLevel === 1) return true; // registered user
-  // For levels 2 (private/group), 3 (mod), 4 (admin) — simplified: deny unless admin
-  return false;
-}
-
-function buildAuthList(forum: any, user: any) {
+function buildAuthList(forum: any, user: any, acls: Awaited<ReturnType<typeof loadUserGroupAcls>>) {
   const lines: string[] = [];
   const can = (yes: boolean) => yes ? "<b>can</b>" : "<b>cannot</b>";
 
-  const canPost = canDoAction(forum.auth_post ?? 1, user);
-  const canReply = canDoAction(forum.auth_reply ?? 1, user);
-  const canEdit = canDoAction(forum.auth_edit ?? 1, user);
-  const canDelete = canDoAction(forum.auth_delete ?? 1, user);
-  const canVote = canDoAction(forum.auth_vote ?? 1, user);
+  lines.push(`You ${can(canDo("post", forum, user, acls))} post new topics in this forum`);
+  lines.push(`You ${can(canDo("reply", forum, user, acls))} reply to topics in this forum`);
+  lines.push(`You ${can(canDo("edit", forum, user, acls))} edit your posts in this forum`);
+  lines.push(`You ${can(canDo("delete", forum, user, acls))} delete your posts in this forum`);
+  lines.push(`You ${can(canDo("vote", forum, user, acls))} vote in polls in this forum`);
 
-  lines.push(`You ${can(canPost)} post new topics in this forum`);
-  lines.push(`You ${can(canReply)} reply to topics in this forum`);
-  lines.push(`You ${can(canEdit)} edit your posts in this forum`);
-  lines.push(`You ${can(canDelete)} delete your posts in this forum`);
-  lines.push(`You ${can(canVote)} vote in polls in this forum`);
-
-  if (isModOrAdmin(user)) {
+  if (canMod(forum.id, user, acls)) {
     lines.push(`You ${can(true)} <a href="/modcp?f=${forum.id}">moderate this forum</a>`);
   }
 

@@ -125,7 +125,7 @@ search.get("/search", async (c) => {
     L_SEARCH: "Search",
     S_HIDDEN_FIELDS: formHiddenFields(c),
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   return c.html(renderPage(tpl));
@@ -275,7 +275,7 @@ async function handleTopicResults(
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   // Fetch last post info for each topic
@@ -420,7 +420,7 @@ async function handlePostResults(
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   if (posts) {
@@ -512,7 +512,7 @@ async function handleNewPosts(c: any) {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   // Fetch last post info
@@ -611,7 +611,7 @@ async function handleUnanswered(c: any) {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   // Fetch last post info for unanswered topics

@@ -125,7 +125,7 @@ profile.get("/profile/:id", async (c) => {
     AIM_IMG: "",
     L_ICQ_NUMBER: "ICQ Number",
     ICQ_IMG: "",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   return c.html(renderPage(tpl));
@@ -400,7 +400,7 @@ profile.get("/memberlist", async (c) => {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   if (members) {

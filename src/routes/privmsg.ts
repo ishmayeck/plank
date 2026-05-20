@@ -137,7 +137,7 @@ privmsg.get("/privmsg", async (c) => {
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     BOX_SIZE_STATUS: "",
     INBOX_LIMIT_IMG_WIDTH: "0",
     INBOX_LIMIT_PERCENT: "0%",
@@ -281,7 +281,7 @@ async function handleReadPM(c: any) {
     ICQ_STATUS_IMG: "",
 
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
   return c.html(renderPage(tpl));
@@ -369,7 +369,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     SUBJECT: subject,
     MESSAGE: message,
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     TOPIC_REVIEW_BOX: "",
     POLLBOX: "",
     S_SMILIES_COLSPAN: "4",

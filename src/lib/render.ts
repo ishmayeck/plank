@@ -3,6 +3,11 @@ import { Template } from "../template/engine.js";
 import { USER_LEVEL, isAdmin } from "./userLevel.js";
 import { escapeHtml } from "./escape.js";
 import { markup, type MarkupString } from "./markup.js";
+import {
+  filterViewable,
+  loadUserGroupAcls,
+  type ForumAclMap,
+} from "./permissions.js";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -188,17 +193,33 @@ export function renderJumpbox(
 
 /**
  * Fetch forum/category lists and render the jumpbox in one call.
- * Accepts any Supabase client and an optional selected forum ID.
+ * If `user` + `acls` are supplied the jumpbox is filtered to forums
+ * the user can `auth_view`; omit them only for contexts where every
+ * forum is intentionally listed (e.g. admin tools).
  */
 export async function fetchAndRenderJumpbox(
-  supabase: { from: (table: string) => any },
-  selectedForumId?: number
+  supabase: any,
+  selectedForumId?: number,
+  options?: {
+    /** Filter the jumpbox by `auth_view`. Pass `null` for an anonymous
+     *  visitor; pass the user object for a logged-in one. Omit to skip
+     *  filtering entirely (admin tools, tests that don't care). */
+    user?: { id: string; userLevel?: number | null } | null;
+    /** Skip the extra `auth_access` round-trip if the caller already
+     *  has the ACL map in hand (most handlers do, for their own gates). */
+    acls?: ForumAclMap;
+  }
 ): Promise<MarkupString> {
   const [{ data: forums }, { data: cats }] = await Promise.all([
-    supabase.from("forums").select("id, forum_name, cat_id").order("forum_order"),
+    supabase.from("forums").select("id, forum_name, cat_id, auth_view").order("forum_order"),
     supabase.from("categories").select("id, cat_title").order("cat_order"),
   ]);
-  return renderJumpbox(forums ?? [], cats ?? [], selectedForumId);
+  let visibleForums = forums ?? [];
+  if (options && "user" in options) {
+    const acls = options.acls ?? (await loadUserGroupAcls(supabase, options.user ?? null));
+    visibleForums = filterViewable(visibleForums, options.user ?? null, acls);
+  }
+  return renderJumpbox(visibleForums, cats ?? [], selectedForumId);
 }
 
 // ─── Role color constants (Solaris theme) ────────────────────

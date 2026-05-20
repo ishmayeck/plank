@@ -69,7 +69,7 @@ groupcp.get("/groupcp", async (c) => {
     S_USERGROUP_ACTION: "/groupcp",
     S_HIDDEN_FIELDS: formHiddenFields(c),
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
 
     L_GROUP_MEMBERSHIP_DETAILS: "Group Membership Details",
     L_YOU_BELONG_GROUPS: "You belong to the following groups:",
@@ -271,7 +271,7 @@ async function renderGroupInfo(c: any, groupId: number) {
     PAGINATION: "",
     PAGE_NUMBER: "",
     S_TIMEZONE: "All times are GMT",
-    JUMPBOX: await fetchAndRenderJumpbox(supabase),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     PENDING_USER_BOX: "",
   });
 

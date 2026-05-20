@@ -3,6 +3,7 @@ import { createPageTemplate, renderPage, formatPhpBBDate, formatUsernameLink, AD
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { loadUserGroupAcls, filterViewable } from "../lib/permissions.js";
 
 const index = new Hono();
 
@@ -26,10 +27,16 @@ index.get("/", async (c) => {
     .select("*")
     .order("cat_order");
 
-  const { data: forums } = await supabase
+  const { data: allForums } = await supabase
     .from("forums")
     .select("*")
     .order("forum_order");
+
+  // Filter out forums the viewer can't see (auth_view). Drives both
+  // the rendered listing and the last-post / moderator lookups below,
+  // so private forums don't leak via "last post by X in [hidden]".
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  const forums = filterViewable(allForums ?? [], user, userAcls);
 
   // Get total stats
   const { count: totalPosts } = await supabase
