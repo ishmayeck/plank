@@ -1266,9 +1266,17 @@ admin.get("/admin/auth", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const adminDb = getSupabaseAdmin();
+  // Single-user groups (group_single_user=true) are reserved for the
+  // per-user permission-override path we deferred from Chunk 17 —
+  // hide them from the admin UI to avoid accidentally hooking them
+  // into the group-permission flow.
   const [{ data: forums }, { data: groups }] = await Promise.all([
     adminDb.from("forums").select("id, forum_name").order("forum_order"),
-    adminDb.from("groups").select("id, group_name").order("group_name"),
+    adminDb
+      .from("groups")
+      .select("id, group_name")
+      .eq("group_single_user", false)
+      .order("group_name"),
   ]);
 
   const forumRows = (forums ?? [])
@@ -1389,10 +1397,12 @@ admin.get("/admin/auth/group/:id", async (c) => {
 
   const { data: group } = await adminDb
     .from("groups")
-    .select("id, group_name")
+    .select("id, group_name, group_single_user")
     .eq("id", groupId)
     .maybeSingle();
-  if (!group) return c.text("Group not found", 404);
+  // Single-user groups are reserved; treat as not-found from the
+  // admin's perspective so the permission UI can't drive them.
+  if (!group || (group as any).group_single_user) return c.text("Group not found", 404);
 
   const [{ data: forums }, { data: accessRows }] = await Promise.all([
     adminDb.from("forums").select("id, forum_name").order("forum_order"),
@@ -1505,6 +1515,450 @@ admin.post("/admin/auth/group/:id", async (c) => {
     await adminDb.from("auth_access").insert(upserts);
   }
   return c.redirect(`/admin/auth/group/${groupId}`);
+});
+
+// ─── Group Management ─────────────────────────────────────────
+//
+// CRUD for the `groups` table — list, create, edit, delete — plus
+// per-group member management. Single-user groups
+// (`groups.group_single_user = true`) are reserved for the per-user
+// permission-override path we deferred from Chunk 17; the admin UI
+// hides them everywhere.
+
+const GROUP_TYPE = { OPEN: 0, CLOSED: 1, HIDDEN: 2 } as const;
+
+function groupTypeLabel(t: number): string {
+  if (t === GROUP_TYPE.OPEN) return "Open";
+  if (t === GROUP_TYPE.HIDDEN) return "Hidden";
+  return "Closed";
+}
+
+/**
+ * Resolve `groups.group_moderator` (a profile UUID) to the matching
+ * username, defaulting to an empty string for unset moderators.
+ */
+async function resolveModeratorName(
+  adminDb: ReturnType<typeof getSupabaseAdmin>,
+  moderatorId: string | null | undefined
+): Promise<string> {
+  if (!moderatorId) return "";
+  const { data } = await adminDb
+    .from("profiles")
+    .select("username")
+    .eq("id", moderatorId)
+    .maybeSingle();
+  return (data as any)?.username ?? "";
+}
+
+admin.get("/admin/groups", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const adminDb = getSupabaseAdmin();
+  const { data: groups } = await adminDb
+    .from("groups")
+    .select("id, group_name, group_type, group_moderator")
+    .eq("group_single_user", false)
+    .order("group_name");
+
+  // Member counts in one round-trip, then aggregated in JS — there's
+  // no GROUP BY on the supabase-js surface and the group list is
+  // small enough that grouping client-side beats N queries.
+  const { data: memberships } = await adminDb
+    .from("user_group")
+    .select("group_id")
+    .eq("user_pending", false);
+  const memberCounts: Record<number, number> = {};
+  for (const m of memberships ?? []) {
+    const gid = (m as any).group_id as number;
+    memberCounts[gid] = (memberCounts[gid] ?? 0) + 1;
+  }
+
+  const rows = (groups ?? [])
+    .map((g: any, i: number) => {
+      const cls = i % 2 === 0 ? "row1" : "row2";
+      return (
+        `<tr>` +
+          `<td class="${cls}">${escapeHtml(g.group_name)}</td>` +
+          `<td class="${cls}">${groupTypeLabel(g.group_type)}</td>` +
+          `<td class="${cls}" align="center">${memberCounts[g.id] ?? 0}</td>` +
+          `<td class="${cls}" align="center">` +
+            `<a href="/admin/groups/${g.id}/edit">Edit</a> &middot; ` +
+            `<a href="/admin/groups/${g.id}/members">Members</a> &middot; ` +
+            `<a href="/admin/auth/group/${g.id}">Permissions</a>` +
+          `</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+
+  const body =
+    `<h1>Group Management</h1>` +
+    `<p>Groups are the unit of permission assignment — a group's bits ` +
+    `in <a href="/admin/auth">Permissions</a> apply to every member.</p>` +
+    `<table cellspacing="1" cellpadding="4" border="0" align="center" class="forumline" width="100%">` +
+      `<tr>` +
+        `<th class="thHead">Name</th>` +
+        `<th class="thHead">Type</th>` +
+        `<th class="thHead">Members</th>` +
+        `<th class="thHead">Actions</th>` +
+      `</tr>` +
+      (rows || `<tr><td class="row1" colspan="4" align="center">No groups yet.</td></tr>`) +
+    `</table>` +
+    `<p align="center"><a href="/admin/groups/new" class="mainoption">Create new group</a></p>`;
+
+  return c.html(
+    renderAdminPage({
+      title: "Plank Forum :: Group Management",
+      body,
+      currentUrl: new URL(c.req.url).pathname,
+    })
+  );
+});
+
+/**
+ * Render the group create/edit form. Used by both `/admin/groups/new`
+ * (no existing group) and `/admin/groups/:id/edit` (populated).
+ */
+function renderGroupEditForm(
+  c: Context,
+  opts: {
+    isEdit: boolean;
+    groupName: string;
+    groupDescription: string;
+    groupType: number;
+    moderatorUsername: string;
+    actionUrl: string;
+    title: string;
+    groupId?: number;
+  }
+): string {
+  const tpl = adminRender("group_edit_body.tpl");
+  tpl.assignVars({
+    L_GROUP_TITLE: opts.title,
+    L_GROUP_EDIT_DELETE: opts.isEdit ? "Edit Group" : "Create New Group",
+    L_ITEMS_REQUIRED: "Items marked with * are required.",
+    L_GROUP_NAME: "Group name",
+    L_GROUP_DESCRIPTION: "Description",
+    L_GROUP_MODERATOR: "Moderator (username)",
+    L_FIND_USERNAME: "Find username",
+    L_GROUP_STATUS: "Status",
+    L_GROUP_OPEN: "Open (anyone can join)",
+    L_GROUP_CLOSED: "Closed (admin/leader approves)",
+    L_GROUP_HIDDEN: "Hidden (not listed publicly)",
+    L_DELETE_MODERATOR: "Clear moderator",
+    L_DELETE_MODERATOR_EXPLAIN: "Remove the moderator without picking a new one.",
+    L_GROUP_DELETE: "Delete group",
+    L_GROUP_DELETE_CHECK: "Tick to delete this group (cannot be undone)",
+    L_YES: "Yes",
+    L_SUBMIT: "Submit",
+    L_RESET: "Reset",
+    GROUP_NAME: opts.groupName,
+    GROUP_DESCRIPTION: opts.groupDescription,
+    GROUP_MODERATOR: opts.moderatorUsername,
+    S_GROUP_ACTION: opts.actionUrl,
+    S_HIDDEN_FIELDS: formHiddenFields(c),
+    S_GROUP_OPEN_TYPE: String(GROUP_TYPE.OPEN),
+    S_GROUP_CLOSED_TYPE: String(GROUP_TYPE.CLOSED),
+    S_GROUP_HIDDEN_TYPE: String(GROUP_TYPE.HIDDEN),
+    S_GROUP_OPEN_CHECKED: opts.groupType === GROUP_TYPE.OPEN ? "checked" : "",
+    S_GROUP_CLOSED_CHECKED: opts.groupType === GROUP_TYPE.CLOSED ? "checked" : "",
+    S_GROUP_HIDDEN_CHECKED: opts.groupType === GROUP_TYPE.HIDDEN ? "checked" : "",
+    // The template's onclick popup expects a URL; we don't have a
+    // dedicated user search popup, so point at the memberlist.
+    U_SEARCH_USER: "/memberlist",
+  });
+  // The {S_HIDDEN_FIELDS} slot in the template doesn't carry the
+  // record id we're editing, so emit an extra hidden input via the
+  // overridable text — but more reliably, we just include it inside
+  // the form by appending to the rendered body. Simpler: stuff an
+  // extra <input> into the form via the hidden-fields slot.
+  if (opts.isEdit && opts.groupId !== undefined) {
+    tpl.assignVars({
+      S_HIDDEN_FIELDS: markup(
+        formHiddenFields(c).html +
+        `<input type="hidden" name="group_id" value="${opts.groupId}" />`
+      ),
+    });
+  }
+  // Only show "delete moderator" / "delete group" rows in edit mode.
+  if (opts.isEdit) tpl.assignBlockVars("group_edit", {});
+
+  return renderAdminPage({
+    title: `Plank Forum :: ${opts.title}`,
+    body: tpl.render("body"),
+    currentUrl: new URL(c.req.url).pathname,
+  });
+}
+
+admin.get("/admin/groups/new", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  return c.html(
+    renderGroupEditForm(c, {
+      isEdit: false,
+      groupName: "",
+      groupDescription: "",
+      groupType: GROUP_TYPE.CLOSED,
+      moderatorUsername: "",
+      actionUrl: "/admin/groups/new",
+      title: "Create Group",
+    })
+  );
+});
+
+admin.post("/admin/groups/new", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const body = await c.req.parseBody();
+  const adminDb = getSupabaseAdmin();
+
+  const name = ((body.group_name as string) ?? "").trim();
+  if (!name) return c.text("Group name is required", 400);
+
+  // Resolve moderator username → profile id, if supplied.
+  const modUsername = ((body.username as string) ?? "").trim();
+  let moderatorId: string | null = null;
+  if (modUsername) {
+    const { data: profile } = await adminDb
+      .from("profiles")
+      .select("id")
+      .eq("username", modUsername)
+      .maybeSingle();
+    if (!profile) return c.text(`User '${modUsername}' not found`, 400);
+    moderatorId = (profile as any).id;
+  }
+
+  const groupType = parseInt(body.group_type as string, 10);
+  const validType = [0, 1, 2].includes(groupType) ? groupType : GROUP_TYPE.CLOSED;
+
+  const { data: created, error } = await adminDb
+    .from("groups")
+    .insert({
+      group_name: name,
+      group_description: ((body.group_description as string) ?? "").trim(),
+      group_type: validType,
+      group_moderator: moderatorId,
+      group_single_user: false,
+    })
+    .select()
+    .single();
+  if (error || !created) return c.text(`Failed to create group: ${error?.message ?? "unknown"}`, 500);
+
+  return c.redirect(`/admin/groups/${(created as any).id}/edit`);
+});
+
+admin.get("/admin/groups/:id/edit", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const groupId = parseInt(c.req.param("id"), 10);
+  const adminDb = getSupabaseAdmin();
+  const { data: group } = await adminDb
+    .from("groups")
+    .select("*")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (!group) return c.text("Group not found", 404);
+
+  const modName = await resolveModeratorName(adminDb, (group as any).group_moderator);
+
+  return c.html(
+    renderGroupEditForm(c, {
+      isEdit: true,
+      groupId,
+      groupName: (group as any).group_name,
+      groupDescription: (group as any).group_description ?? "",
+      groupType: (group as any).group_type,
+      moderatorUsername: modName,
+      actionUrl: `/admin/groups/${groupId}/edit`,
+      title: `Edit Group: ${(group as any).group_name}`,
+    })
+  );
+});
+
+admin.post("/admin/groups/:id/edit", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const groupId = parseInt(c.req.param("id"), 10);
+  const body = await c.req.parseBody();
+  const adminDb = getSupabaseAdmin();
+
+  // Delete path — checkbox in the edit form. user_group + auth_access
+  // FKs cascade, so this is single-statement.
+  if (body.group_delete === "1") {
+    await adminDb.from("groups").delete().eq("id", groupId);
+    return c.redirect("/admin/groups");
+  }
+
+  const name = ((body.group_name as string) ?? "").trim();
+  if (!name) return c.text("Group name is required", 400);
+
+  // Moderator resolution. Three states:
+  //   - "Clear moderator" checked → null
+  //   - username supplied → look up → fail if not found
+  //   - username empty + checkbox off → keep current
+  const updates: Record<string, any> = {
+    group_name: name,
+    group_description: ((body.group_description as string) ?? "").trim(),
+  };
+  const groupType = parseInt(body.group_type as string, 10);
+  if ([0, 1, 2].includes(groupType)) updates.group_type = groupType;
+
+  if (body.delete_old_moderator === "1") {
+    updates.group_moderator = null;
+  } else {
+    const modUsername = ((body.username as string) ?? "").trim();
+    if (modUsername) {
+      const { data: profile } = await adminDb
+        .from("profiles")
+        .select("id")
+        .eq("username", modUsername)
+        .maybeSingle();
+      if (!profile) return c.text(`User '${modUsername}' not found`, 400);
+      updates.group_moderator = (profile as any).id;
+    }
+  }
+
+  await adminDb.from("groups").update(updates).eq("id", groupId);
+  return c.redirect(`/admin/groups/${groupId}/edit`);
+});
+
+admin.get("/admin/groups/:id/members", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const groupId = parseInt(c.req.param("id"), 10);
+  const adminDb = getSupabaseAdmin();
+
+  const { data: group } = await adminDb
+    .from("groups")
+    .select("id, group_name")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (!group) return c.text("Group not found", 404);
+
+  const { data: rows } = await adminDb
+    .from("user_group")
+    .select("user_pending, profiles!user_group_user_id_fkey(id, username)")
+    .eq("group_id", groupId);
+
+  const active = (rows ?? [])
+    .filter((r: any) => !r.user_pending)
+    .map((r: any) => r.profiles)
+    .filter(Boolean)
+    .sort((a: any, b: any) => a.username.localeCompare(b.username));
+  const pending = (rows ?? [])
+    .filter((r: any) => r.user_pending)
+    .map((r: any) => r.profiles)
+    .filter(Boolean)
+    .sort((a: any, b: any) => a.username.localeCompare(b.username));
+
+  const memberRow = (p: any, kind: "active" | "pending", i: number) => {
+    const cls = i % 2 === 0 ? "row1" : "row2";
+    return (
+      `<tr>` +
+        `<td class="${cls}"><a href="/profile/${encodeURIComponent(p.id)}">${escapeHtml(p.username)}</a></td>` +
+        `<td class="${cls}" align="center">` +
+          `<form method="post" action="/admin/groups/${groupId}/members" style="display:inline">` +
+            formHiddenFields(c).html +
+            `<input type="hidden" name="user_id" value="${p.id}" />` +
+            (kind === "pending"
+              ? `<button type="submit" name="action" value="approve">Approve</button> ` +
+                `<button type="submit" name="action" value="remove">Reject</button>`
+              : `<button type="submit" name="action" value="remove">Remove</button>`) +
+          `</form>` +
+        `</td>` +
+      `</tr>`
+    );
+  };
+
+  const activeRows = active.length
+    ? active.map((p, i) => memberRow(p, "active", i)).join("")
+    : `<tr><td class="row1" colspan="2" align="center">No members.</td></tr>`;
+  const pendingRows = pending.length
+    ? pending.map((p, i) => memberRow(p, "pending", i)).join("")
+    : `<tr><td class="row1" colspan="2" align="center">No pending requests.</td></tr>`;
+
+  const body =
+    `<h1>Members of "${escapeHtml((group as any).group_name)}"</h1>` +
+    `<p><a href="/admin/groups">&larr; Back to groups</a> &middot; ` +
+    `<a href="/admin/groups/${groupId}/edit">Edit this group</a> &middot; ` +
+    `<a href="/admin/auth/group/${groupId}">Permissions</a></p>` +
+    `<table cellspacing="1" cellpadding="4" border="0" align="center" class="forumline" width="100%">` +
+      `<tr><th class="thHead" colspan="2">Active members</th></tr>` +
+      activeRows +
+      `<tr><th class="thHead" colspan="2">Pending requests</th></tr>` +
+      pendingRows +
+    `</table>` +
+    `<h2>Add member</h2>` +
+    `<form method="post" action="/admin/groups/${groupId}/members">` +
+      formHiddenFields(c).html +
+      `<input type="hidden" name="action" value="add" />` +
+      `<label>Username: <input type="text" name="username" /></label> ` +
+      `<button type="submit">Add</button>` +
+    `</form>`;
+
+  return c.html(
+    renderAdminPage({
+      title: `Plank Forum :: Members of ${(group as any).group_name}`,
+      body,
+      currentUrl: new URL(c.req.url).pathname,
+    })
+  );
+});
+
+admin.post("/admin/groups/:id/members", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const groupId = parseInt(c.req.param("id"), 10);
+  const body = await c.req.parseBody();
+  const action = body.action as string;
+  const adminDb = getSupabaseAdmin();
+
+  if (action === "add") {
+    const username = ((body.username as string) ?? "").trim();
+    if (!username) return c.redirect(`/admin/groups/${groupId}/members`);
+    const { data: profile } = await adminDb
+      .from("profiles")
+      .select("id")
+      .eq("username", username)
+      .maybeSingle();
+    if (!profile) return c.text(`User '${username}' not found`, 400);
+    // upsert handles "already a member" cleanly; we always promote to
+    // non-pending so admin adds bypass any approval flow.
+    await adminDb.from("user_group").upsert(
+      {
+        group_id: groupId,
+        user_id: (profile as any).id,
+        user_pending: false,
+      },
+      { onConflict: "group_id,user_id" }
+    );
+    return c.redirect(`/admin/groups/${groupId}/members`);
+  }
+
+  const targetUserId = (body.user_id as string) ?? "";
+  if (!targetUserId) return c.redirect(`/admin/groups/${groupId}/members`);
+
+  if (action === "remove") {
+    await adminDb
+      .from("user_group")
+      .delete()
+      .eq("group_id", groupId)
+      .eq("user_id", targetUserId);
+  } else if (action === "approve") {
+    await adminDb
+      .from("user_group")
+      .update({ user_pending: false })
+      .eq("group_id", groupId)
+      .eq("user_id", targetUserId);
+  }
+  return c.redirect(`/admin/groups/${groupId}/members`);
 });
 
 

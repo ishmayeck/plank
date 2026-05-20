@@ -49,6 +49,7 @@ const SIDEBAR: NavSection[] = [
     heading: "Users",
     items: [
       { label: "Manage users", url: "/admin/users" },
+      { label: "Groups", url: "/admin/groups", prefix: "/admin/groups" },
       { label: "Bans", url: "/admin/bans" },
     ],
   },
