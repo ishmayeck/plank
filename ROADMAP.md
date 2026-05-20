@@ -300,8 +300,8 @@ Deferred (decided against during planning): per-user permission overrides via si
 - [ ] "Mark forums/topics read" tracking (per-user, not just a redirect)
 - [ ] Agreement/ToS page — renders `agreement.tpl`
 - [ ] Error and confirmation pages (`error_body.tpl`, `confirm_body.tpl`, `message_body.tpl`)
-- [ ] IP intelligence: enrich poster IPs with ASN/org info via local MaxMind GeoLite2 lookup (no per-request external API calls). Display in mod view to flag VPN/datacenter/hosting ranges.
-- [ ] Mass email to all users or groups
+- [ ] IP intelligence: enrich poster IPs with ASN/org info via local MaxMind GeoLite2 lookup (no per-request external API calls). Display in mod view to flag VPN/datacenter/hosting ranges. See "IP intelligence + bot protection" notes below for the full modern shape.
+- [~] ~~Mass email to all users or groups~~ — **intentionally omitted**. Useful in 2005; in 2026 it's trivial to export the user list into Mailchimp / Buttondown / a self-hosted mailing-list platform and run campaigns there. Keeping mail-blast functionality in the forum invites compliance burden (CAN-SPAM, GDPR, deliverability reputation) for negligible benefit.
 - [ ] New PM notification popup
 - [ ] Performance review: query optimization, caching where needed
 
