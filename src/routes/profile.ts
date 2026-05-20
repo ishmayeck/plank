@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { imageSize } from "image-size";
 import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
@@ -174,23 +175,49 @@ profile.post("/profile", async (c) => {
     } else if (avatarFile.size > avatarConfig.maxFilesize) {
       avatarError = `The image file size exceeds the allowed limit of ${avatarConfig.maxFilesize} bytes.`;
     } else {
-      // Upload to Supabase Storage
-      const ext = avatarFile.name.split(".").pop() ?? "png";
-      const path = `avatars/${user.id}.${ext}`;
-      const { error: uploadErr } = await adminDb.storage
-        .from("avatars")
-        .upload(path, avatarFile, {
-          upsert: true,
-          contentType: avatarFile.type,
-        });
+      // Decode the image header to enforce dimension limits. image-size
+      // only reads enough bytes to extract metadata, so this is cheap
+      // even for the 6 MB upper bound.
+      const buf = Buffer.from(await avatarFile.arrayBuffer());
+      let dims: { width?: number; height?: number };
+      try {
+        dims = imageSize(buf);
+      } catch {
+        avatarError = "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
+        dims = {};
+      }
+      if (!avatarError) {
+        const w = dims.width ?? 0;
+        const h = dims.height ?? 0;
+        if (!w || !h) {
+          avatarError = "Could not read image dimensions; please try a different file.";
+        } else if (w > avatarConfig.maxWidth || h > avatarConfig.maxHeight) {
+          avatarError =
+            `The image dimensions are too large. Maximum allowed is ` +
+            `${avatarConfig.maxWidth}x${avatarConfig.maxHeight} pixels ` +
+            `(yours is ${w}x${h}).`;
+        }
+      }
 
-      if (uploadErr) {
-        avatarError = `Avatar upload failed: ${uploadErr.message}`;
-      } else {
-        const { data: urlData } = adminDb.storage
+      if (!avatarError) {
+        // Upload to Supabase Storage. Re-use the buffer we already read.
+        const ext = avatarFile.name.split(".").pop() ?? "png";
+        const path = `avatars/${user.id}.${ext}`;
+        const { error: uploadErr } = await adminDb.storage
           .from("avatars")
-          .getPublicUrl(path);
-        avatarUrl = urlData.publicUrl;
+          .upload(path, buf, {
+            upsert: true,
+            contentType: avatarFile.type,
+          });
+
+        if (uploadErr) {
+          avatarError = `Avatar upload failed: ${uploadErr.message}`;
+        } else {
+          const { data: urlData } = adminDb.storage
+            .from("avatars")
+            .getPublicUrl(path);
+          avatarUrl = urlData.publicUrl;
+        }
       }
     }
 

@@ -162,6 +162,76 @@ describe("User Profiles", () => {
         .eq("id", testUserId);
     });
 
+    it("rejects avatar uploads that exceed the dimension limit", async () => {
+      // Build a minimal PNG header that advertises 300x300. image-size only
+      // reads the IHDR chunk, so we don't need a valid CRC or pixel data —
+      // and we don't want a 300x300 worth of pixels in the test fixture.
+      const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const ihdrLen = Buffer.from([0, 0, 0, 13]);
+      const ihdrType = Buffer.from("IHDR", "ascii");
+      const widthBuf = Buffer.alloc(4); widthBuf.writeUInt32BE(300);
+      const heightBuf = Buffer.alloc(4); heightBuf.writeUInt32BE(300);
+      const ihdrTail = Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00]); // 8-bit RGB
+      const crc = Buffer.alloc(4);
+      const png = Buffer.concat([sig, ihdrLen, ihdrType, widthBuf, heightBuf, ihdrTail, crc]);
+
+      const formData = new FormData();
+      formData.append("location", "Test City");
+      formData.append(
+        "avatar",
+        new File([png], "huge.png", { type: "image/png" })
+      );
+
+      const res = await app.request("/profile", {
+        method: "POST",
+        body: formData,
+        headers: authHeaders(),
+      });
+
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("dimensions are too large");
+      expect(html).toContain("300x300");
+
+      // Avatar should not have been recorded on the profile.
+      const { data: profile } = await adminDb
+        .from("profiles")
+        .select("user_avatar")
+        .eq("id", testUserId)
+        .single();
+      expect(profile!.user_avatar ?? "").not.toContain("huge.png");
+    });
+
+    it("accepts avatar uploads within the dimension limit", async () => {
+      // 50x50 PNG header — well within the 200x200 default.
+      const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const ihdrLen = Buffer.from([0, 0, 0, 13]);
+      const ihdrType = Buffer.from("IHDR", "ascii");
+      const widthBuf = Buffer.alloc(4); widthBuf.writeUInt32BE(50);
+      const heightBuf = Buffer.alloc(4); heightBuf.writeUInt32BE(50);
+      const ihdrTail = Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00]);
+      const crc = Buffer.alloc(4);
+      const png = Buffer.concat([sig, ihdrLen, ihdrType, widthBuf, heightBuf, ihdrTail, crc]);
+
+      const formData = new FormData();
+      formData.append("location", "Test City");
+      formData.append(
+        "avatar",
+        new File([png], "ok.png", { type: "image/png" })
+      );
+
+      const res = await app.request("/profile", {
+        method: "POST",
+        body: formData,
+        headers: authHeaders(),
+      });
+
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("dimensions are too large");
+      expect(html).toContain("Your profile has been updated");
+    });
+
     it("rejects mismatched passwords", async () => {
       const formData = new FormData();
       formData.append("new_password", "newpass1");
