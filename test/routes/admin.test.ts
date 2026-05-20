@@ -355,4 +355,188 @@ describe("Admin Panel", () => {
       }
     });
   });
+
+  describe("permission management", () => {
+    let testForumId: number;
+    let testGroupId: number;
+    let testCatId: number;
+
+    beforeAll(async () => {
+      const { data: cat } = await adminDb
+        .from("categories")
+        .insert({ cat_title: "PermAdmin Test Cat", cat_order: 9998 })
+        .select()
+        .single();
+      testCatId = cat!.id;
+
+      const { data: forum } = await adminDb
+        .from("forums")
+        .insert({ cat_id: testCatId, forum_name: "PermAdmin Test Forum", forum_order: 9998 })
+        .select()
+        .single();
+      testForumId = forum!.id;
+
+      const { data: group } = await adminDb
+        .from("groups")
+        .insert({ group_name: "PermAdmin Test Group", group_type: 1, group_description: "" })
+        .select()
+        .single();
+      testGroupId = group!.id;
+    });
+
+    afterAll(async () => {
+      await adminDb.from("forums").delete().eq("id", testForumId);
+      await adminDb.from("groups").delete().eq("id", testGroupId);
+      await adminDb.from("categories").delete().eq("id", testCatId);
+    });
+
+    it("returns 403 for non-admin on /admin/auth", async () => {
+      const res = await app.request("/admin/auth", { headers: normalHeaders() });
+      expect(res.status).toBe(403);
+    });
+
+    it("renders the auth landing page for admins", async () => {
+      const res = await app.request("/admin/auth", { headers: admHeaders() });
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Permission Management");
+      expect(html).toContain("PermAdmin Test Forum");
+      expect(html).toContain("PermAdmin Test Group");
+    });
+
+    it("renders the per-forum auth edit page", async () => {
+      const res = await app.request(`/admin/auth/forum/${testForumId}`, {
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("PermAdmin Test Forum");
+      // Should have selects for each action.
+      expect(html).toContain(`name="auth_view"`);
+      expect(html).toContain(`name="auth_post"`);
+      expect(html).toContain(`name="auth_sticky"`);
+    });
+
+    it("saves per-forum auth levels", async () => {
+      const form = new FormData();
+      // Set the forum to require ACL for posting (level 2) and MOD
+      // for sticky (level 3); keep view/read at defaults.
+      form.append("auth_view", "0");
+      form.append("auth_read", "0");
+      form.append("auth_post", "2");
+      form.append("auth_reply", "1");
+      form.append("auth_edit", "1");
+      form.append("auth_delete", "1");
+      form.append("auth_sticky", "3");
+      form.append("auth_announce", "3");
+      form.append("auth_vote", "1");
+      form.append("auth_pollcreate", "1");
+
+      const res = await app.request(`/admin/auth/forum/${testForumId}`, {
+        method: "POST",
+        body: form,
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(302);
+
+      const { data: forum } = await adminDb
+        .from("forums")
+        .select("auth_post, auth_sticky")
+        .eq("id", testForumId)
+        .single();
+      expect(forum!.auth_post).toBe(2);
+      expect(forum!.auth_sticky).toBe(3);
+    });
+
+    it("clamps tampered auth levels to known values", async () => {
+      const form = new FormData();
+      // 99 isn't a valid level — should be ignored (not written).
+      form.append("auth_post", "99");
+      const res = await app.request(`/admin/auth/forum/${testForumId}`, {
+        method: "POST",
+        body: form,
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(302);
+
+      const { data: forum } = await adminDb
+        .from("forums")
+        .select("auth_post")
+        .eq("id", testForumId)
+        .single();
+      // Previous value (2) preserved; 99 was rejected.
+      expect(forum!.auth_post).toBe(2);
+    });
+
+    it("renders the per-group auth matrix page", async () => {
+      const res = await app.request(`/admin/auth/group/${testGroupId}`, {
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("PermAdmin Test Group");
+      expect(html).toContain("PermAdmin Test Forum");
+      // Should have checkboxes for the per-forum bits.
+      expect(html).toContain(`name="auth_view_${testForumId}"`);
+      expect(html).toContain(`name="mod_${testForumId}"`);
+    });
+
+    it("saves group auth_access bits", async () => {
+      const form = new FormData();
+      form.append(`auth_view_${testForumId}`, "1");
+      form.append(`auth_read_${testForumId}`, "1");
+      form.append(`mod_${testForumId}`, "1");
+
+      const res = await app.request(`/admin/auth/group/${testGroupId}`, {
+        method: "POST",
+        body: form,
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(302);
+
+      const { data: access } = await adminDb
+        .from("auth_access")
+        .select("*")
+        .eq("group_id", testGroupId)
+        .eq("forum_id", testForumId)
+        .single();
+      expect(access!.auth_view).toBe(true);
+      expect(access!.auth_read).toBe(true);
+      expect(access!.auth_post).toBe(false);
+      expect(access!.auth_mod).toBe(true);
+    });
+
+    it("clears the auth_access row when no bits are checked", async () => {
+      const form = new FormData();
+      // No bits checked → row should be removed.
+      const res = await app.request(`/admin/auth/group/${testGroupId}`, {
+        method: "POST",
+        body: form,
+        headers: admHeaders(),
+      });
+      expect(res.status).toBe(302);
+
+      const { data: access } = await adminDb
+        .from("auth_access")
+        .select("*")
+        .eq("group_id", testGroupId)
+        .eq("forum_id", testForumId)
+        .maybeSingle();
+      expect(access).toBeNull();
+    });
+
+    it("returns 403 for non-admin on the per-forum page", async () => {
+      const res = await app.request(`/admin/auth/forum/${testForumId}`, {
+        headers: normalHeaders(),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 for non-admin on the per-group page", async () => {
+      const res = await app.request(`/admin/auth/group/${testGroupId}`, {
+        headers: normalHeaders(),
+      });
+      expect(res.status).toBe(403);
+    });
+  });
 });

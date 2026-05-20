@@ -1215,5 +1215,296 @@ admin.get("/admin/rank-action", async (c) => {
   return c.redirect("/admin/ranks");
 });
 
+// ─── Permission Management ────────────────────────────────────
+//
+// Three pages:
+//   /admin/auth                — pick a forum or group to edit
+//   /admin/auth/forum/:id      — set the forums.auth_* enum levels
+//                                (ALL/REG/ACL/MOD/ADMIN) for one forum
+//   /admin/auth/group/:id      — set the auth_access bits for one
+//                                group across every forum (matrix UI)
+//
+// The forum page drives the *required* level for each action; the
+// group page drives which groups satisfy ACL-level requirements.
+
+const AUTH_LEVELS_LABELS: Array<[number, string]> = [
+  [0, "ALL"],
+  [1, "REG"],
+  [2, "PRIVATE"],
+  [3, "MOD"],
+  [5, "ADMIN"],
+];
+
+const FORUM_AUTH_COLUMNS = [
+  "auth_view",
+  "auth_read",
+  "auth_post",
+  "auth_reply",
+  "auth_edit",
+  "auth_delete",
+  "auth_sticky",
+  "auth_announce",
+  "auth_vote",
+  "auth_pollcreate",
+] as const;
+
+function authLevelSelect(name: string, current: number): string {
+  const opts = AUTH_LEVELS_LABELS.map(
+    ([val, label]) =>
+      `<option value="${val}"${val === current ? " selected=\"selected\"" : ""}>${label}</option>`
+  ).join("");
+  return `<select name="${name}">${opts}</select>`;
+}
+
+admin.get("/admin/auth", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const adminDb = getSupabaseAdmin();
+  const [{ data: forums }, { data: groups }] = await Promise.all([
+    adminDb.from("forums").select("id, forum_name").order("forum_order"),
+    adminDb.from("groups").select("id, group_name").order("group_name"),
+  ]);
+
+  const forumRows = (forums ?? [])
+    .map(
+      (f: any) =>
+        `<tr><td><a href="/admin/auth/forum/${f.id}">${escapeHtml(f.forum_name)}</a></td></tr>`
+    )
+    .join("");
+  const groupRows = (groups ?? [])
+    .map(
+      (g: any) =>
+        `<tr><td><a href="/admin/auth/group/${g.id}">${escapeHtml(g.group_name)}</a></td></tr>`
+    )
+    .join("");
+
+  // Standalone landing page — phpBB2's original auth_select_body.tpl
+  // assumes a single list, but we have two natural entry points
+  // (forums vs groups) so a small inline HTML scaffold reads cleaner
+  // than fighting the template. The actual edit pages below use the
+  // original .tpl files unmodified.
+  const tpl = adminRender("index_body.tpl");
+  // Replace the index body content with our two-column auth picker.
+  // index_body.tpl has its own structure; we just override the body
+  // wholesale by loading a different template into the "body" slot.
+  // Build the HTML by hand instead of fighting the template engine.
+  const html =
+    `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">` +
+    `<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" />` +
+    `<link rel="stylesheet" href="/templates/Solaris/admin/subSilver.css" type="text/css" />` +
+    `<title>Plank Forum - Permission Management</title></head><body>` +
+    `<h1>Permission Management</h1>` +
+    `<p>Choose a forum to set its required permission levels, or a group ` +
+    `to set its per-forum access bits.</p>` +
+    `<table cellspacing="1" cellpadding="4" border="0" align="center" class="forumline">` +
+    `<tr><th class="thHead">Forums</th></tr>${forumRows}` +
+    `<tr><th class="thHead">Groups</th></tr>${groupRows}` +
+    `</table></body></html>`;
+  return c.html(html);
+});
+
+admin.get("/admin/auth/forum/:id", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const forumId = parseInt(c.req.param("id"), 10);
+  const adminDb = getSupabaseAdmin();
+
+  const { data: forum } = await adminDb
+    .from("forums")
+    .select("*")
+    .eq("id", forumId)
+    .maybeSingle();
+  if (!forum) return c.text("Forum not found", 404);
+
+  const tpl = adminRender("auth_forum_body.tpl");
+
+  tpl.assignVars({
+    L_AUTH_TITLE: "Forum Permission Control",
+    L_AUTH_EXPLAIN: markup(
+      "Here you can set the required permission level for each action " +
+        "on this forum. <b>ALL</b>=everyone, <b>REG</b>=registered users, " +
+        "<b>PRIVATE</b>=members of a group with the matching bit (set on the " +
+        "group page), <b>MOD</b>=moderators of this forum, <b>ADMIN</b>=administrators."
+    ),
+    FORUM_NAME: forum.forum_name,
+    S_FORUMAUTH_ACTION: `/admin/auth/forum/${forumId}`,
+    L_SUBMIT: "Submit",
+    L_RESET: "Reset",
+    S_COLUMN_SPAN: String(FORUM_AUTH_COLUMNS.length),
+    S_HIDDEN_FIELDS: formHiddenFields(c),
+    U_SWITCH_MODE: markup(
+      `<a href="/admin/auth">Back to permission management</a>`
+    ),
+  });
+
+  // Header row: one <th> per action.
+  for (const col of FORUM_AUTH_COLUMNS) {
+    tpl.assignBlockVars("forum_auth_titles", {
+      CELL_TITLE: col.replace(/^auth_/, "").replace(/^./, (m) => m.toUpperCase()),
+    });
+  }
+  // Data row: one <select> per action, pre-selected to the current value.
+  for (const col of FORUM_AUTH_COLUMNS) {
+    tpl.assignBlockVars("forum_auth_data", {
+      S_AUTH_LEVELS_SELECT: markup(
+        authLevelSelect(col, (forum as any)[col] as number)
+      ),
+    });
+  }
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/auth/forum/:id", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const forumId = parseInt(c.req.param("id"), 10);
+  const body = await c.req.parseBody();
+  const adminDb = getSupabaseAdmin();
+
+  // Build the update payload from the columns we know about, clamping
+  // to known auth levels so a tampered form can't write garbage.
+  const validLevels = new Set([0, 1, 2, 3, 5]);
+  const updates: Record<string, number> = {};
+  for (const col of FORUM_AUTH_COLUMNS) {
+    const raw = parseInt(body[col] as string, 10);
+    if (validLevels.has(raw)) updates[col] = raw;
+  }
+  if (Object.keys(updates).length > 0) {
+    await adminDb.from("forums").update(updates).eq("id", forumId);
+  }
+  return c.redirect(`/admin/auth/forum/${forumId}`);
+});
+
+admin.get("/admin/auth/group/:id", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const groupId = parseInt(c.req.param("id"), 10);
+  const adminDb = getSupabaseAdmin();
+
+  const { data: group } = await adminDb
+    .from("groups")
+    .select("id, group_name")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (!group) return c.text("Group not found", 404);
+
+  const [{ data: forums }, { data: accessRows }] = await Promise.all([
+    adminDb.from("forums").select("id, forum_name").order("forum_order"),
+    adminDb.from("auth_access").select("*").eq("group_id", groupId),
+  ]);
+
+  const accessByForum: Record<number, any> = {};
+  for (const r of accessRows ?? []) accessByForum[(r as any).forum_id] = r;
+
+  const aclColumns = FORUM_AUTH_COLUMNS;
+
+  const tpl = adminRender("auth_ug_body.tpl");
+
+  tpl.assignVars({
+    L_AUTH_TITLE: "Group Permissions",
+    L_AUTH_EXPLAIN: markup(
+      "Check a box to grant this group the corresponding permission " +
+        "on each forum. The boxes only matter for forums whose action " +
+        "level is set to <b>PRIVATE</b>. The <b>Mod</b> column makes " +
+        "this group a moderator of the forum (passes MOD-level gates " +
+        "and grants modcp access)."
+    ),
+    L_USER_OR_GROUPNAME: "Group name",
+    USERNAME: group.group_name,
+    L_PERMISSIONS: "Per-forum permissions",
+    L_FORUM: "Forum",
+    L_MODERATOR_STATUS: "Mod",
+    S_AUTH_ACTION: `/admin/auth/group/${groupId}`,
+    L_SUBMIT: "Submit",
+    L_RESET: "Reset",
+    S_HIDDEN_FIELDS: formHiddenFields(c),
+    S_COLUMN_SPAN: String(aclColumns.length + 2),
+    U_SWITCH_MODE: markup(
+      `<a href="/admin/auth">Back to permission management</a>`
+    ),
+  });
+  tpl.assignBlockVars("switch_group_auth", {
+    GROUP_MEMBERSHIP: markup(
+      `Editing permissions for group <b>${escapeHtml(group.group_name)}</b>`
+    ),
+  });
+
+  // Column headers — one per ACL action.
+  for (const col of aclColumns) {
+    tpl.assignBlockVars("acltype", {
+      L_UG_ACL_TYPE: col.replace(/^auth_/, ""),
+    });
+  }
+
+  // One row per forum: a checkbox per ACL action + one for auth_mod.
+  let i = 0;
+  for (const f of forums ?? []) {
+    const row = accessByForum[(f as any).id] ?? {};
+    const rowClass = i++ % 2 === 0 ? "row1" : "row2";
+    tpl.assignBlockVars("forums", {
+      ROW_CLASS: rowClass,
+      FORUM_NAME: (f as any).forum_name,
+      S_MOD_SELECT: markup(
+        `<input type="checkbox" name="mod_${(f as any).id}" value="1"${row.auth_mod ? " checked=\"checked\"" : ""} />`
+      ),
+    });
+    for (const col of aclColumns) {
+      tpl.assignBlockVars("forums.aclvalues", {
+        S_ACL_SELECT: markup(
+          `<input type="checkbox" name="${col}_${(f as any).id}" value="1"${row[col] ? " checked=\"checked\"" : ""} />`
+        ),
+      });
+    }
+  }
+
+  return c.html(renderAdmin(tpl));
+});
+
+admin.post("/admin/auth/group/:id", async (c) => {
+  const user = c.get("user");
+  if (!isAdmin(user)) return c.text("Forbidden", 403);
+
+  const groupId = parseInt(c.req.param("id"), 10);
+  const body = await c.req.parseBody();
+  const adminDb = getSupabaseAdmin();
+
+  // Gather every forum mentioned in the form. Any forum without any
+  // checked box yields a row of all-false (so we can clear bits, not
+  // just set them).
+  const { data: forums } = await adminDb.from("forums").select("id");
+  const forumIds = (forums ?? []).map((f: any) => f.id as number);
+
+  const upserts: any[] = [];
+  for (const fid of forumIds) {
+    const row: any = { group_id: groupId, forum_id: fid };
+    let hasAnyBit = false;
+    for (const col of FORUM_AUTH_COLUMNS) {
+      const bit = body[`${col}_${fid}`] === "1";
+      row[col] = bit;
+      if (bit) hasAnyBit = true;
+    }
+    const modBit = body[`mod_${fid}`] === "1";
+    row.auth_mod = modBit;
+    if (modBit) hasAnyBit = true;
+    // Only persist rows that grant at least one bit; otherwise clear
+    // any existing row for this forum. Keeps auth_access sparse and
+    // avoids confusing all-false rows in the admin UI.
+    if (hasAnyBit) upserts.push(row);
+  }
+
+  // Delete-then-insert is simpler than computing a per-forum upsert
+  // diff; the table is small and only touched from admin actions.
+  await adminDb.from("auth_access").delete().eq("group_id", groupId);
+  if (upserts.length > 0) {
+    await adminDb.from("auth_access").insert(upserts);
+  }
+  return c.redirect(`/admin/auth/group/${groupId}`);
+});
+
 
 export default admin;
