@@ -36,9 +36,10 @@ import type { TemplateValue } from "../lib/markup.js";
 // that persisted/precompiled ASTs from an older format are invalidated
 // rather than silently mis-rendered.
 
-export const AST_FORMAT_VERSION = 1;
+// v2 added IncludeNode (phpBB2 `<!-- INCLUDE x.tpl -->`).
+export const AST_FORMAT_VERSION = 2;
 
-export type TemplateNode = TextNode | BlockNode;
+export type TemplateNode = TextNode | BlockNode | IncludeNode;
 
 export interface TextNode {
   type: "text";
@@ -49,6 +50,18 @@ export interface BlockNode {
   type: "block";
   name: string;
   children: TemplateNode[];
+}
+
+/**
+ * phpBB2 `<!-- INCLUDE filename.tpl -->`. Resolved at render time through the
+ * Template's loader/root (not at compile time), so every template compiles to
+ * a standalone, serializable AST with no compile-time dependency graph. The
+ * included template shares the including template's variable namespace, as in
+ * phpBB2. Cycles are detected at render time.
+ */
+export interface IncludeNode {
+  type: "include";
+  name: string;
 }
 
 /** A compiled template: the AST plus the format version it was built with. */
@@ -158,6 +171,30 @@ function readTemplateFile(filepath: string): string {
 
 // ─── Parser (pure, module-level) ────────────────────────────────────
 
+const INCLUDE_REGEX = /<!--\s*INCLUDE\s+(\S+?)\s*-->/g;
+
+/**
+ * Push a run of plain text, splitting out any `<!-- INCLUDE x.tpl -->`
+ * directives into IncludeNodes. (INCLUDE never spans a block boundary in
+ * phpBB2, so it's safe to resolve within a single text run.)
+ */
+function pushText(nodes: TemplateNode[], text: string): void {
+  if (!text) return;
+  INCLUDE_REGEX.lastIndex = 0;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = INCLUDE_REGEX.exec(text)) !== null) {
+    if (m.index > last) {
+      nodes.push({ type: "text", content: text.slice(last, m.index) });
+    }
+    nodes.push({ type: "include", name: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) {
+    nodes.push({ type: "text", content: text.slice(last) });
+  }
+}
+
 function parseBlocks(code: string): TemplateNode[] {
   const nodes: TemplateNode[] = [];
   const beginRegex = /<!--\s*BEGIN\s+(\S+?)\s*-->/g;
@@ -169,14 +206,14 @@ function parseBlocks(code: string): TemplateNode[] {
     const beginMatch = beginRegex.exec(code);
 
     if (!beginMatch) {
-      // No more blocks — rest is plain text
-      nodes.push({ type: "text", content: code.slice(pos) });
+      // No more blocks — rest is plain text (may contain INCLUDEs)
+      pushText(nodes, code.slice(pos));
       break;
     }
 
     // Text before this block
     if (beginMatch.index > pos) {
-      nodes.push({ type: "text", content: code.slice(pos, beginMatch.index) });
+      pushText(nodes, code.slice(pos, beginMatch.index));
     }
 
     const blockName = beginMatch[1];
@@ -186,7 +223,7 @@ function parseBlocks(code: string): TemplateNode[] {
     const endPos = findMatchingEnd(code, blockName, innerStart);
     if (endPos === -1) {
       // No matching end — treat as text
-      nodes.push({ type: "text", content: code.slice(beginMatch.index) });
+      pushText(nodes, code.slice(beginMatch.index));
       break;
     }
 
@@ -251,35 +288,70 @@ function findMatchingEnd(
 
 // ─── Renderer (pure, module-level) ──────────────────────────────────
 
+/**
+ * Per-render context: the block data plus the include resolver and the stack
+ * of in-progress includes (for cycle detection). Bundled so INCLUDE support
+ * doesn't thread extra positional params through every render function.
+ */
+interface RenderCtx {
+  blockData: Record<string, Record<string, TemplateValue>[]>;
+  resolveInclude: (name: string) => TemplateNode[];
+  includeStack: string[];
+}
+
 function renderNodes(
   nodes: TemplateNode[],
   rootVars: Record<string, TemplateValue>,
   blockScope: BlockScope,
-  blockData: Record<string, Record<string, TemplateValue>[]>
+  ctx: RenderCtx
 ): string {
   let output = "";
 
   for (const node of nodes) {
     if (node.type === "text") {
       output += substituteVars(node.content, rootVars, blockScope);
+    } else if (node.type === "include") {
+      output += renderInclude(node, rootVars, blockScope, ctx);
     } else {
-      output += renderBlock(node, rootVars, blockScope, blockData);
+      output += renderBlock(node, rootVars, blockScope, ctx);
     }
   }
 
   return output;
 }
 
+function renderInclude(
+  node: IncludeNode,
+  rootVars: Record<string, TemplateValue>,
+  scope: BlockScope,
+  ctx: RenderCtx
+): string {
+  if (ctx.includeStack.includes(node.name)) {
+    throw new Error(
+      `Template INCLUDE cycle: ${[...ctx.includeStack, node.name].join(" -> ")}`
+    );
+  }
+  const included = ctx.resolveInclude(node.name);
+  // The included template shares the current variable namespace and scope
+  // (phpBB2 behaviour). Push the name for cycle detection during its render.
+  ctx.includeStack.push(node.name);
+  try {
+    return renderNodes(included, rootVars, scope, ctx);
+  } finally {
+    ctx.includeStack.pop();
+  }
+}
+
 function renderBlock(
   node: BlockNode,
   rootVars: Record<string, TemplateValue>,
   parentScope: BlockScope,
-  blockData: Record<string, Record<string, TemplateValue>[]>
+  ctx: RenderCtx
 ): string {
   const blockName = node.name;
 
   // Determine the data rows for this block
-  const rows = resolveBlockData(blockName, parentScope, blockData);
+  const rows = resolveBlockData(blockName, parentScope, ctx.blockData);
 
   if (!rows || rows.length === 0) {
     return "";
@@ -299,7 +371,7 @@ function renderBlock(
       ],
     };
 
-    output += renderNodes(node.children, rootVars, newScope, blockData);
+    output += renderNodes(node.children, rootVars, newScope, ctx);
   }
 
   return output;
@@ -490,6 +562,22 @@ export class Template {
     (lastRow as any)[key].push(vars);
   }
 
+  /**
+   * Resolve an `<!-- INCLUDE name -->` to its AST, the same way loadFile
+   * sources templates (loader if present, else filesystem theme root).
+   * Memoized per instance so a repeated include compiles/reads once.
+   */
+  private includeCache: Map<string, TemplateNode[]> = new Map();
+  private resolveInclude(name: string): TemplateNode[] {
+    const cached = this.includeCache.get(name);
+    if (cached !== undefined) return cached;
+    const nodes = this.loader
+      ? this.loader.resolve(name)
+      : compile(readTemplateFile(join(this.root!, name)));
+    this.includeCache.set(name, nodes);
+    return nodes;
+  }
+
   /** Render the template identified by handle. */
   render(handle: string): string {
     const nodes = this.templates.get(handle);
@@ -497,7 +585,12 @@ export class Template {
       throw new Error(`Template->render(): No template loaded for handle "${handle}"`);
     }
 
-    let output = renderNodes(nodes, this.rootVars, {}, this.blockData);
+    const ctx: RenderCtx = {
+      blockData: this.blockData,
+      resolveInclude: (name) => this.resolveInclude(name),
+      includeStack: [],
+    };
+    let output = renderNodes(nodes, this.rootVars, {}, ctx);
 
     for (const { pattern, replacement } of this.substitutions) {
       output = output.replace(pattern, replacement);
