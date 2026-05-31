@@ -13,12 +13,9 @@ import {
   POSTING_COLOR_LABELS,
   POSTING_FONT_SIZE_LABELS,
 } from "../lib/labels.js";
-import { Template } from "../template/engine.js";
-import { join } from "node:path";
+import { createTemplate } from "../template/source.js";
 import { loginRedirect } from "./auth.js";
 import type { Context } from "hono";
-
-const THEME_DIR = join(import.meta.dirname, "..", "..", "themes", "Solaris");
 
 const posting = new Hono();
 
@@ -197,7 +194,7 @@ posting.get("/posting_topic_review", async (c) => {
   const reviewHtml = await renderTopicReview(topicId, smilies, false);
 
   // Use simple_header/simple_footer templates like phpBB2 does for iframe content
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("header", "simple_header.tpl");
   tpl.loadFile("footer", "simple_footer.tpl");
 

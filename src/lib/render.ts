@@ -1,5 +1,4 @@
-import { join } from "node:path";
-import { Template } from "../template/engine.js";
+import { createTemplate } from "../template/source.js";
 import { USER_LEVEL, isAdmin } from "./userLevel.js";
 import { escapeHtml } from "./escape.js";
 import { markup, type MarkupString } from "./markup.js";
@@ -39,10 +38,6 @@ export function formatPhpBBDate(
   return `${dayName} ${mon} ${day}, ${year} ${hours}:${minutes} ${ampm}`;
 }
 
-const THEME = "Solaris";
-const THEMES_DIR = join(import.meta.dirname, "..", "..", "themes");
-const THEME_DIR = join(THEMES_DIR, THEME);
-
 export interface RenderContext {
   user?: {
     id: string;
@@ -58,7 +53,7 @@ export interface RenderContext {
  * and common variables already assigned.
  */
 export function createPageTemplate(ctx: RenderContext): Template {
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("header", "overall_header.tpl");
   tpl.loadFile("footer", "overall_footer.tpl");
 
@@ -152,7 +147,7 @@ export function renderJumpbox(
   categories?: { id: number; cat_title: string }[],
   selectedForumId?: number
 ): MarkupString {
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("jumpbox", "jumpbox.tpl");
 
   let options = '<option value="-1">Select a forum</option>';
@@ -254,7 +249,7 @@ export function formatUsernameLink(
  * The supplied message is treated as plain text and escaped.
  */
 export function renderErrorBox(message: string): MarkupString {
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("error", "error_body.tpl");
   tpl.assignVars({ ERROR_MESSAGE: message });
   return markup(tpl.render("error"));
