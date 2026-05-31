@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { Template } from "../template/engine.js";
+import type { Template } from "../template/engine.js";
+import { createTemplate } from "../template/source.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
@@ -9,9 +10,6 @@ import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
 import { clearSmiliesCache } from "../lib/smilies.js";
 import { clearCensorCache } from "../lib/wordcensor.js";
 import { renderAdminPage } from "../lib/adminLayout.js";
-import path from "path";
-
-const THEME_DIR = path.join(process.cwd(), "themes", "Solaris");
 
 const admin = new Hono();
 
@@ -23,7 +21,7 @@ const admin = new Hono();
  * files.
  */
 function adminRender(bodyTpl: string): Template {
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("body", `admin/${bodyTpl}`);
   return tpl;
 }

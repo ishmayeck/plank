@@ -889,7 +889,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
 }
 
 function renderPollBox(pollTitle: string, pollOptions: string[], pollLength: number): string {
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("pollbox", "posting_poll_body.tpl");
 
   tpl.assignVars({
@@ -942,7 +942,7 @@ async function renderTopicReview(topicId: number, smilies: Smiley[], inline: boo
 
   if (!posts || posts.length === 0) return "";
 
-  const tpl = new Template(THEME_DIR);
+  const tpl = createTemplate();
   tpl.loadFile("review", "posting_topic_review.tpl");
 
   tpl.assignVars({
