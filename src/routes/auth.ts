@@ -7,9 +7,52 @@ import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
 import { ACCESS_COOKIE_OPTS, REFRESH_COOKIE_OPTS } from "../auth/cookies.js";
+import {
+  checkRateLimit,
+  clientIp,
+  retryAfterText,
+  RATE_LIMITS,
+} from "../lib/rate_limit.js";
 import type { Context } from "hono";
 
 const auth = new Hono();
+
+/**
+ * Render the login page with an inline message. Used for the generic
+ * "incorrect username/password" path (kept deliberately vague so it doesn't
+ * confirm whether an account exists) and for the rate-limit lockout notice.
+ */
+function renderLoginPage(
+  c: Context,
+  message: string,
+  username: string,
+  redirect: string
+): string {
+  const tpl = createPageTemplate({ pageTitle: "Log in" });
+  tpl.loadFile("body", "login_body.tpl");
+  tpl.assignVars({
+    S_LOGIN_ACTION: "/login",
+    L_ENTER_PASSWORD: message,
+    L_INDEX: "Index",
+    U_INDEX: "/",
+    L_USERNAME: "Username",
+    L_PASSWORD: "Password",
+    L_AUTO_LOGIN: "Log me on automatically each visit",
+    L_LOGIN: "Log in",
+    L_SEND_PASSWORD: "I forgot my password",
+    U_SEND_PASSWORD: "/forgot-password",
+    USERNAME: username,
+    S_HIDDEN_FIELDS: formHiddenFields(
+      c,
+      redirect ? `<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />` : ""
+    ),
+  });
+  tpl.assignBlockVars("switch_allow_autologin", {});
+  return renderPage(tpl);
+}
+
+const BAD_CREDENTIALS_MSG =
+  "You have specified an incorrect or inactive username, or an invalid password.";
 
 /** Build a /login URL that redirects back to the given request's current page after login. */
 export function loginRedirect(c: { req: { url: string } }): string {
@@ -66,6 +109,24 @@ auth.post("/login", async (c) => {
     return c.redirect(redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login");
   }
 
+  // Rate limit by IP to blunt brute-force / credential stuffing. Keyed by
+  // IP (not username) so an attacker can't lock out a victim by spamming
+  // their account name; the message is the generic bad-credentials copy so
+  // it doesn't reveal that throttling (or the account) exists.
+  const rl = await checkRateLimit(`login:ip:${clientIp(c)}`, RATE_LIMITS.login);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfter));
+    return c.html(
+      renderLoginPage(
+        c,
+        `Too many login attempts. Please try again in ${retryAfterText(rl.retryAfter)}.`,
+        username,
+        redirect
+      ),
+      429
+    );
+  }
+
   // Look up the user's email by username
   const adminSupabase = getSupabaseAdmin();
 
@@ -76,28 +137,8 @@ auth.post("/login", async (c) => {
     .maybeSingle();
 
   if (!profile) {
-    // User not found — render login with error
-    const tpl = createPageTemplate({ pageTitle: "Log in" });
-    tpl.loadFile("body", "login_body.tpl");
-    tpl.assignVars({
-      S_LOGIN_ACTION: "/login",
-      L_ENTER_PASSWORD: "You have specified an incorrect or inactive username, or an invalid password.",
-      L_INDEX: "Index",
-      U_INDEX: "/",
-      L_USERNAME: "Username",
-      L_PASSWORD: "Password",
-      L_AUTO_LOGIN: "Log me on automatically each visit",
-      L_LOGIN: "Log in",
-      L_SEND_PASSWORD: "I forgot my password",
-      U_SEND_PASSWORD: "/forgot-password",
-      USERNAME: username,
-      S_HIDDEN_FIELDS: formHiddenFields(
-        c,
-        redirect ? `<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />` : ""
-      ),
-    });
-    tpl.assignBlockVars("switch_allow_autologin", {});
-    return c.html(renderPage(tpl));
+    // User not found — render login with the generic (non-enumerating) error.
+    return c.html(renderLoginPage(c, BAD_CREDENTIALS_MSG, username, redirect));
   }
 
   // Get the user's email from auth.users
@@ -117,27 +158,7 @@ auth.post("/login", async (c) => {
   });
 
   if (error || !session.session) {
-    const tpl = createPageTemplate({ pageTitle: "Log in" });
-    tpl.loadFile("body", "login_body.tpl");
-    tpl.assignVars({
-      S_LOGIN_ACTION: "/login",
-      L_ENTER_PASSWORD: "You have specified an incorrect or inactive username, or an invalid password.",
-      L_INDEX: "Index",
-      U_INDEX: "/",
-      L_USERNAME: "Username",
-      L_PASSWORD: "Password",
-      L_AUTO_LOGIN: "Log me on automatically each visit",
-      L_LOGIN: "Log in",
-      L_SEND_PASSWORD: "I forgot my password",
-      U_SEND_PASSWORD: "/forgot-password",
-      USERNAME: username,
-      S_HIDDEN_FIELDS: formHiddenFields(
-        c,
-        redirect ? `<input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />` : ""
-      ),
-    });
-    tpl.assignBlockVars("switch_allow_autologin", {});
-    return c.html(renderPage(tpl));
+    return c.html(renderLoginPage(c, BAD_CREDENTIALS_MSG, username, redirect));
   }
 
   // Set session cookies
@@ -167,6 +188,21 @@ auth.post("/register", async (c) => {
 
   const supabaseForConfig = c.get("supabase");
   const avatarConfig = await getAvatarConfig(supabaseForConfig);
+
+  // Rate limit account creation by IP to stop signup floods.
+  const rlReg = await checkRateLimit(`register:ip:${clientIp(c)}`, RATE_LIMITS.register);
+  if (!rlReg.allowed) {
+    c.header("Retry-After", String(rlReg.retryAfter));
+    return c.html(
+      renderRegisterPage(
+        c,
+        `Too many registration attempts. Please try again in ${retryAfterText(rlReg.retryAfter)}.`,
+        { username, email },
+        avatarConfig
+      ),
+      429
+    );
+  }
 
   // Validation
   if (!username || !email || !password) {

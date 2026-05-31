@@ -14,6 +14,7 @@ import {
   POSTING_FONT_SIZE_LABELS,
 } from "../lib/labels.js";
 import { createTemplate } from "../template/source.js";
+import { checkRateLimit, RATE_LIMITS, retryAfterText } from "../lib/rate_limit.js";
 import { loginRedirect } from "./auth.js";
 import type { Context } from "hono";
 

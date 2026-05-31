@@ -17,6 +17,9 @@ export default defineConfig({
       // Test fixtures POST without going through the GET-then-token dance.
       // CSRF coverage lives in test/security/csrf.test.ts which clears this.
       SKIP_CSRF: "1",
+      // Most suites log in / post repeatedly; don't throttle them. Rate-limit
+      // coverage lives in test/security/rate_limit.test.ts which clears this.
+      SKIP_RATE_LIMIT: "1",
     },
   },
 });
