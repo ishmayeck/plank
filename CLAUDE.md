@@ -114,6 +114,36 @@ npm run dev           # Start Hono dev server
   `cleanupTestUser` from `test/util/users.ts` in `beforeAll` — it tears
   down auth.users entries by email so re-runs don't collide on
   fixed-email fixtures (`supabase db reset` doesn't truncate auth).
+- **The test suite runs serially (`fileParallelism: false` in
+  `vitest.config.ts`).** DB-backed suites share one local Supabase and
+  seed fixed-email users + fixed category/forum rows; running files in
+  parallel makes them collide non-deterministically (each file passes
+  alone, the full suite fails a different handful every run). Don't
+  re-enable parallelism without first isolating fixtures per file. A
+  clean signal needs `supabase db reset` before a full run, since some
+  suites mutate seed rows.
+- **Construct templates via `createTemplate()` from
+  `src/template/source.ts`, never `new Template(THEME_DIR)`.** The engine
+  renders from a compiled AST sourced through a `TemplateLoader`
+  (`src/template/loader.ts`); `createTemplate()` returns one bound to the
+  active source — filesystem by default, or whatever `setTemplateLoader()`
+  installed at boot (e.g. a `PrecompiledTemplateLoader` reading AST JSON on
+  Supabase Edge / Workers, where there's no filesystem). `compile()` is
+  memoized by content and file reads by path+mtime, so this is also the
+  fast path. `<!-- INCLUDE x.tpl -->` is supported (render-time,
+  cycle-guarded). See `DEPLOYMENT.md`.
+- **Rate-limited endpoints call `checkRateLimit(key, rule)`** from
+  `src/lib/rate_limit.ts` (login, register, posting). It's Postgres-backed
+  (the `check_rate_limit` RPC) so it works across stateless Edge isolates
+  and never read-then-writes from JS; it fails OPEN on RPC error. Tests
+  bypass via `SKIP_RATE_LIMIT=1` (set in `vitest.config.ts`, mirroring
+  `SKIP_CSRF`); `test/security/rate_limit.test.ts` clears it. Login is
+  keyed by IP with a generic (non-enumerating) message.
+- **Uploaded themes go through `ingestThemeZip()`** from
+  `src/lib/theme_package.ts` — the only place untrusted bytes are unzipped,
+  so it carries the hardening (zip-slip, zip-bomb caps, extension
+  allowlist). It compiles `.tpl` → AST and content-addresses by SHA-256.
+  Keep the unzip the single chokepoint; don't unzip uploads elsewhere.
 
 ## Key Design Decisions
 
