@@ -401,12 +401,21 @@ formatter renders the same UTC instant differently in `UTC`,
 
 ---
 
-## Chunk 21: Template Engine — Loader Seam & Compile Cache
+## Chunk 21: Template Engine — Loader Seam & Compile Cache ✅
 
 **Goal**: Make the template engine runtime-agnostic and stop re-reading +
 re-parsing `.tpl` files on every render. This is the foundation the whole
 deployment story rests on (Chunk 22) and what makes drop-in themes possible
 (Chunk 23), so it's promoted out of the generic perf line in Chunk 18.
+
+**Done** (6 commits): parse/AST cache (~800× warm speedup over the 44 Solaris
+templates), pluggable `TemplateLoader` seam (`Fs`/`Memory`/`Precompiled`),
+versioned AST JSON (`serializeAst`/`deserializeAst`), `<!-- INCLUDE -->`
+support (render-time, cycle-guarded), and all render call sites routed
+through a swappable `src/template/source.ts` (`setTemplateLoader` is the
+one switch Chunk 22 flips). Also fixed a flaky harness: pinned vitest to
+serial execution (`fileParallelism: false`) since DB-backed suites share one
+Supabase. Full suite 343/343.
 
 Background: `Template.render()` already parses each `.tpl` into an AST
 (`parseBlocks` → `TemplateNode[]`) and then `renderNodes` walks it. But the
