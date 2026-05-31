@@ -57,6 +57,49 @@ export interface CompiledTemplate {
   nodes: TemplateNode[];
 }
 
+/**
+ * Resolves a template name (e.g. "overall_header.tpl") to its compiled AST.
+ *
+ * `resolve` is synchronous so that rendering stays synchronous (routes call
+ * `tpl.render()` synchronously). A loader backed by a remote/async source
+ * (Supabase Storage, Cloudflare KV) must fetch its data ahead of time via
+ * `prime()` and then serve it from memory in `resolve()`. Filesystem and
+ * in-memory loaders need no priming. See src/template/loader.ts.
+ */
+export interface TemplateLoader {
+  /** Return the compiled AST for a template name. Throws if unavailable. */
+  resolve(name: string): TemplateNode[];
+  /**
+   * Optionally pre-fetch/compile the named templates so subsequent
+   * `resolve()` calls can be synchronous. No-op for synchronous sources.
+   */
+  prime?(names: string[]): Promise<void>;
+}
+
+/**
+ * Serialize a compiled AST to a stable JSON string tagged with the format
+ * version. This is the artifact a build/deploy step writes to Postgres /
+ * Storage / KV so a non-Node runtime can render without parsing `.tpl`.
+ */
+export function serializeAst(nodes: TemplateNode[]): string {
+  const payload: CompiledTemplate = { v: AST_FORMAT_VERSION, nodes };
+  return JSON.stringify(payload);
+}
+
+/**
+ * Parse a serialized AST back into nodes, rejecting a version mismatch so
+ * stale precompiled output is regenerated rather than mis-rendered.
+ */
+export function deserializeAst(json: string): TemplateNode[] {
+  const parsed = JSON.parse(json) as CompiledTemplate;
+  if (!parsed || parsed.v !== AST_FORMAT_VERSION) {
+    throw new Error(
+      `Template AST format mismatch: got v${parsed?.v}, expected v${AST_FORMAT_VERSION}`
+    );
+  }
+  return parsed.nodes;
+}
+
 interface BlockScope {
   currentBlock?: string;
   currentRow?: Record<string, TemplateValue>;
@@ -343,26 +386,48 @@ function resolveNamespacedVar(
 // ─── Template instance ──────────────────────────────────────────────
 
 export class Template {
-  private root: string;
-  private templates: Map<string, string> = new Map();
+  private root?: string;
+  private loader?: TemplateLoader;
+  // handle -> compiled AST. Compiled at load time so render() is a pure walk
+  // over data, identical regardless of where the AST came from (fs, loader,
+  // precompiled JSON). compile() is memoized, so compile-at-load costs the
+  // same as the old compile-at-render.
+  private templates: Map<string, TemplateNode[]> = new Map();
   private rootVars: Record<string, TemplateValue> = {};
   private blockData: Record<string, Record<string, TemplateValue>[]> = {};
   private substitutions: { pattern: RegExp; replacement: string }[] = [];
 
-  constructor(root: string = ".") {
-    this.root = resolve(root);
+  /**
+   * Construct with either a theme-root path (filesystem source, the default
+   * on Node) or an explicit TemplateLoader (Supabase / KV / in-memory).
+   */
+  constructor(source: string | TemplateLoader = ".") {
+    if (typeof source === "string") {
+      this.root = resolve(source);
+    } else {
+      this.loader = source;
+    }
   }
 
-  /** Load a template from a string (useful for tests). */
+  /** Load a template from a string (useful for tests). Compiled immediately. */
   loadString(handle: string, content: string): void {
-    this.templates.set(handle, content);
+    this.templates.set(handle, compile(content));
   }
 
-  /** Load a template from a .tpl file relative to the theme root. */
+  /** Load a precompiled AST directly (e.g. fetched from storage). */
+  loadAst(handle: string, nodes: TemplateNode[]): void {
+    this.templates.set(handle, nodes);
+  }
+
+  /**
+   * Load a template by filename. Resolves through the loader if one was
+   * supplied, otherwise reads + compiles from the filesystem theme root.
+   */
   loadFile(handle: string, filename: string): void {
-    const filepath = join(this.root, filename);
-    const content = readTemplateFile(filepath);
-    this.templates.set(handle, content);
+    const nodes = this.loader
+      ? this.loader.resolve(filename)
+      : compile(readTemplateFile(join(this.root!, filename)));
+    this.templates.set(handle, nodes);
   }
 
   /**
@@ -427,12 +492,11 @@ export class Template {
 
   /** Render the template identified by handle. */
   render(handle: string): string {
-    const code = this.templates.get(handle);
-    if (code === undefined) {
+    const nodes = this.templates.get(handle);
+    if (nodes === undefined) {
       throw new Error(`Template->render(): No template loaded for handle "${handle}"`);
     }
 
-    const nodes = compile(code);
     let output = renderNodes(nodes, this.rootVars, {}, this.blockData);
 
     for (const { pattern, replacement } of this.substitutions) {
