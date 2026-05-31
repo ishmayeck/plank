@@ -11,13 +11,18 @@ Priority order for the remaining open work. This supersedes the original
 numeric order; chunks weren't renumbered to avoid churning cross-references
 and commit history.
 
-1. **Chunk 21** — Template loader seam + compile cache. Keystone: pays off on
-   the current Node setup *and* unblocks 22 + 23.
-2. **Chunk 20** — Rate limiting (launch blocker once public); timezone after.
-3. **Chunk 22** — Deploy to Supabase Compute. **Includes the `package.json`
-   devDeps cleanup (move `tsx`/`typescript`/`vitest`/`@types/node` to
-   devDependencies) — trivial, standalone, do it early so it can't be
-   forgotten.**
+**Progress (2026-05-31):** Chunk 21 ✅ complete. Chunk 20 rate limiting ✅
+(timezone still open). Chunk 22 devDeps cleanup ✅ (rest of 22 open). Also:
+fixed a flaky test harness (serial execution) and a latent posting bug, both
+unrelated to the planned work but surfaced along the way. Suite 373/373.
+
+1. **Chunk 21** ✅ — Template loader seam + compile cache. Keystone: pays off
+   on the current Node setup *and* unblocks 22 + 23.
+2. **Chunk 20** — Rate limiting ✅ (launch blocker, done); **timezone still
+   open** (sprawling + cosmetic; deferred).
+3. **Chunk 22** — Deploy to Supabase Compute. devDeps cleanup ✅ done early.
+   Remaining: runtime audit, Edge Function entry, secrets, static assets,
+   compiled-templates-at-deploy — needs Supabase project setup (human).
 4. **Chunk 23** — Drop-in themes (the fun one).
 5. **Chunk 24** — phpBB2 ⇄ Plank differential parity harness (the capstone).
    Comes after 21–23; depends on the compiler/loader and benefits from a
@@ -373,15 +378,15 @@ in the April 2026 code review (see commits c35b516..71e2d3e).
 **Goal**: Items the code-review remediation deliberately deferred. Both
 need a deeper design pass than fits in a mechanical refactor.
 
-- [ ] **Rate limiting on auth + posting endpoints.** Throttle
-  `POST /login`, `POST /register`, `POST /posting` per IP and per
-  username/email to blunt brute-force credential stuffing and
-  posting-flood. Open questions: token-bucket vs sliding-window;
-  in-process map vs Postgres-backed (so it survives restarts and works
-  across multiple workers); how to expose the lockout state in the
-  login UI without leaking enumeration; how to bypass for tests.
-  Touches `src/routes/auth.ts`, `src/routes/posting.ts`, possibly a
-  new `src/lib/rate_limit.ts` and a `rate_limits` table.
+- [x] **Rate limiting on auth + posting endpoints.** ✅ Postgres-backed
+  fixed-window limiter (`check_rate_limit` RPC, `rate_limits` table) —
+  chosen over in-process so it works across Edge isolates and survives
+  restarts; atomic increment-and-check so JS never read-then-writes.
+  login 20/10m per IP (generic non-enumerating message + 429/Retry-After),
+  register 10/1h per IP, posting 20/5m per user (creation modes only).
+  Fails open on RPC error. `SKIP_RATE_LIMIT=1` test bypass mirrors
+  `SKIP_CSRF`. `src/lib/rate_limit.ts` +
+  `supabase/migrations/20260531000001_rate_limits.sql` + 9 tests.
 - [ ] **Honor user timezone preference end-to-end.** The profile form
   already collects a `TIMEZONE_SELECT` value (`profiles.user_timezone`,
   `profiles.user_dateformat`), but `formatPhpBBDate` in
