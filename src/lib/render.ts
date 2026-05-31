@@ -1,4 +1,5 @@
 import { createTemplate } from "../template/source.js";
+import type { Template } from "../template/engine.js";
 import { USER_LEVEL, isAdmin } from "./userLevel.js";
 import { escapeHtml } from "./escape.js";
 import { markup, type MarkupString } from "./markup.js";
