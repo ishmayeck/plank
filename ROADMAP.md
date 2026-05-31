@@ -526,20 +526,22 @@ is the only place untrusted bytes touch the system — harden that, and the
 escape-by-default renderer covers the output.
 
 - [ ] **Admin upload UI**: accept a theme `.zip`, store raw in Supabase
-  Storage under a content hash (`themes/{hash}/...`).
-- [ ] **Unzip** with a pure-JS, runtime-agnostic lib (`fflate`) — no
-  `node:zlib`. Harden: reject zip-slip (`../` entry names), cap entry count
-  + uncompressed size (zip-bomb), allowlist `.tpl`/`.css`/image extensions.
-- [ ] **Compile** each `.tpl` → AST JSON, write to `compiled_templates`
-  keyed by `{theme_hash, handle}`. Run async off the request path via
-  Supabase **Queues + Cron** (the Supabase-native job primitive); the same
-  logic maps to CF Queues/Workflows or an inline Node call on other stacks.
-- [ ] **Content-addressed cache key.** In-memory memo keyed by `theme_hash`
-  so a re-upload (new hash) is an automatic miss — no manual invalidation,
-  no stale renders across isolates.
+  Storage under a content hash (`themes/{hash}/...`). **(owner: needs running
+  app + Storage to verify)**
+- [x] **Unzip + harden + compile** ✅ — `src/lib/theme_package.ts`
+  `ingestThemeZip()`: fflate unzip (no `node:zlib`), zip-slip / zip-bomb /
+  entry-count guards, `.tpl`/`.css`/`.cfg`/image allowlist, compiles each
+  `.tpl` to AST. Runtime-agnostic (fflate + Web Crypto, no `node:*`). 12
+  tests incl. identical-render via `PrecompiledTemplateLoader`. The wiring
+  that *writes* the package to `compiled_templates`/Storage (Supabase
+  Queues + Cron, or inline) is owner-side.
+- [x] **Content-addressed key** ✅ — `ingestThemeZip` returns `hash`
+  (SHA-256 of the zip bytes); same bytes → same hash, re-upload → new hash
+  → automatic cache miss. (The in-memory memo keyed by hash lands when the
+  loader is wired to Storage, owner-side.)
 - [ ] **Theme switching** in admin board config (select active theme by
   hash); coherence between the raw `.zip` and its compiled AST set enforced
-  by the shared hash.
+  by the shared hash. **(owner: needs running app)**
 - [ ] **Distribution note (deferred while personal):** shipped artifact
   contains zero theme files — themes are user-supplied at runtime, which
   also keeps the licensing boundary clean if this ever leaves "just for me."
