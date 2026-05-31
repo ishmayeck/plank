@@ -5,6 +5,31 @@ Chunks are ordered by dependency — each builds on the previous.
 
 ---
 
+## Execution Order (agreed 2026-05-30)
+
+Priority order for the remaining open work. This supersedes the original
+numeric order; chunks weren't renumbered to avoid churning cross-references
+and commit history.
+
+1. **Chunk 21** — Template loader seam + compile cache. Keystone: pays off on
+   the current Node setup *and* unblocks 22 + 23.
+2. **Chunk 20** — Rate limiting (launch blocker once public); timezone after.
+3. **Chunk 22** — Deploy to Supabase Compute. **Includes the `package.json`
+   devDeps cleanup (move `tsx`/`typescript`/`vitest`/`@types/node` to
+   devDependencies) — trivial, standalone, do it early so it can't be
+   forgotten.**
+4. **Chunk 23** — Drop-in themes (the fun one).
+5. **Chunk 24** — phpBB2 ⇄ Plank differential parity harness (the capstone).
+   Comes after 21–23; depends on the compiler/loader and benefits from a
+   deployed target. The single biggest chunk; NOT an unsupervised overnight
+   task (see its security-regression guardrails).
+6. **Chunk 18** — Remaining polish. **Only partially valid**: some items are
+   genuinely useful (read-tracking, error/confirm pages, topic watching);
+   others are obsolete for a 2026 forum (mass email already cut). Cherry-pick
+   post-deploy; do not treat as a unit.
+
+---
+
 ## Chunk 1: Project Scaffolding & Template Engine ✅
 
 **Goal**: Working Hono app that can render a phpBB2 .tpl file with injected data.
@@ -303,7 +328,9 @@ Deferred (decided against during planning): per-user permission overrides via si
 - [ ] IP intelligence: enrich poster IPs with ASN/org info via local MaxMind GeoLite2 lookup (no per-request external API calls). Display in mod view to flag VPN/datacenter/hosting ranges. See "IP intelligence + bot protection" notes below for the full modern shape.
 - [~] ~~Mass email to all users or groups~~ — **intentionally omitted**. Useful in 2005; in 2026 it's trivial to export the user list into Mailchimp / Buttondown / a self-hosted mailing-list platform and run campaigns there. Keeping mail-blast functionality in the forum invites compliance burden (CAN-SPAM, GDPR, deliverability reputation) for negligible benefit.
 - [ ] New PM notification popup
-- [ ] Performance review: query optimization, caching where needed
+- [ ] Performance review: query optimization, N+1 audit, indexes where
+  needed. (Template-engine parse/compile caching split out into Chunk 21,
+  since it's now load-bearing for the deployment story, not just perf.)
 
 **Tests**: Notification emails send, read tracking works across sessions, IP enrichment resolves known datacenter ranges.
 
@@ -371,3 +398,234 @@ need a deeper design pass than fits in a mechanical refactor.
 after the cooldown; per-IP and per-account independently. Date
 formatter renders the same UTC instant differently in `UTC`,
 `America/Los_Angeles`, and `Asia/Tokyo` profiles.
+
+---
+
+## Chunk 21: Template Engine — Loader Seam & Compile Cache
+
+**Goal**: Make the template engine runtime-agnostic and stop re-reading +
+re-parsing `.tpl` files on every render. This is the foundation the whole
+deployment story rests on (Chunk 22) and what makes drop-in themes possible
+(Chunk 23), so it's promoted out of the generic perf line in Chunk 18.
+
+Background: `Template.render()` already parses each `.tpl` into an AST
+(`parseBlocks` → `TemplateNode[]`) and then `renderNodes` walks it. But the
+AST is rebuilt on every call and thrown away, and every page does several
+`new Template()` + `loadFile()` (= `readFileSync` + full re-parse) for
+header/footer/body/jumpbox. The AST is a pure, declarative data structure
+(text + block nodes, no embedded code) — phpBB2's template language has no
+expressions — so it serializes losslessly to JSON. That single fact is what
+unlocks "compile to data, not code": ship the ~80-line interpreter, fetch the
+AST from anywhere.
+
+The two design moves, in order:
+
+- [ ] **Parse/compile cache (rung 1).** Memoize `parseBlocks` output keyed by
+  a content identity (path + mtime for fs; content hash otherwise). Pure
+  perf win, no API change. Confirm nothing depends on the current
+  re-parse-every-time behavior (it shouldn't — render is stateless w.r.t.
+  the AST). Add a micro-benchmark to capture before/after.
+- [ ] **Pluggable `TemplateLoader` interface (rung 2).** Extract the one
+  impure line (`readFileSync`) behind an interface: given a handle/filename,
+  return an AST (compiling + caching on miss). Implementations:
+  - `FsTemplateLoader` — current behavior (Node/Docker/dev/tests).
+  - `SupabaseTemplateLoader` — reads compiled AST JSON from Postgres
+    (`compiled_templates`) or Storage; the initial deployment target.
+  - (later) `KvTemplateLoader` — Cloudflare KV/R2, for the CF stack.
+  The engine (`renderNodes`/`substituteVars`/`renderValue`) and the AST
+  format are identical across all loaders — only the byte source varies.
+- [ ] **AST serialization format.** Lock a stable JSON shape for
+  `TemplateNode` (versioned, so a format bump invalidates stale compiled
+  output). `compile(text) → AST` and `render(ast, data) → html` become the
+  two halves; loaders bridge them.
+- [ ] **`<!-- INCLUDE x.tpl -->` support.** Currently faked at the controller
+  level (`createPageTemplate` hand-loads header/footer; `renderPage`
+  concatenates). Real drop-in themes use in-template INCLUDE; resolve it in
+  the compiler against the loader's handle registry. Composes cleanly once
+  the AST + loader seam exists.
+- [ ] Migrate `render.ts` call sites (`createPageTemplate`, `renderErrorBox`,
+  `renderJumpbox`, `renderMessagePage`) onto the loader so they stop calling
+  `loadFile` directly.
+
+**Tests**: Cache returns identical output to cold parse (byte-for-byte across
+the existing template suite); cache invalidates on content change; AST
+round-trips through JSON unchanged; `FsTemplateLoader` passes the full
+existing engine suite with zero template-file edits; INCLUDE resolves nested
+templates and respects escape-by-default; a swapped-in fake loader renders
+without touching the filesystem (the Workers/Supabase-portability proof).
+
+---
+
+## Chunk 22: Deployment — Supabase Compute (initial surface)
+
+**Goal**: Ship Plank to a real host. Primary target: **Supabase Edge
+Functions** (Deno), keeping the stack Supabase-only (Postgres + Auth +
+Storage + Compute) with no third-party deps. Secondary: keep the app
+portable so Node-in-Docker and Cloudflare Workers remain viable later
+without a rewrite (the Chunk 21 loader seam is what guarantees this).
+
+Why this is now possible: the only hard blocker to non-Node runtimes was
+`readFileSync` in the template engine. Chunk 21 removes it. `@supabase/
+supabase-js` v2 and Hono are both fetch-based and runtime-agnostic.
+
+- [ ] **Runtime audit.** Sweep `src/` for remaining Node-only assumptions
+  (`node:fs`, `node:path`, `process.cwd`, `import.meta.dirname` in
+  `render.ts`, `Buffer` usage, `image-size` on avatar upload). Replace or
+  guard each. The template loader is the big one; verify the rest.
+- [ ] **Supabase Edge Function entry.** Plank is one Hono app owning all
+  routes; serve it as a single catch-all function (`/functions/v1/plank`)
+  with a custom-domain rewrite so `/` maps to it. Hono runs on Deno, but
+  smoke-test it rather than assume.
+- [ ] **Config/secrets.** Move env loading (`src/lib/config.ts`,
+  `src/index.ts` `loadConfig()`) to work under Edge Function env injection
+  (no `dotenv` at runtime; secrets via `supabase secrets set`).
+- [ ] **Static assets.** Theme CSS/images currently served by Hono from
+  disk; serve from Supabase Storage (or a CDN bucket) under the compute
+  target. Avatars already use Storage — align the theme assets the same way.
+- [ ] **Compiled templates at deploy.** Run the Chunk 21 compiler as a
+  deploy/seed step that writes the active theme's AST JSON to
+  `compiled_templates` (or Storage), so the function never compiles on the
+  request path — just fetch + memoize in isolate memory (co-located with
+  the DB, so the read is local, which is why this stack needs no KV).
+- [ ] **`package.json` hygiene for prod.** Move `tsx`, `typescript`,
+  `vitest`, `@types/node` to `devDependencies` so any image/bundle is lean.
+- [ ] **Document the three stacks** (Supabase-only / Supabase+CF / Supabase+
+  Node-Docker) as a deployment matrix; each is "the same engine + a
+  different `TemplateLoader` + a different job primitive for compilation."
+
+**Tests**: Full route smoke test against a deployed Edge Function (auth,
+post, view, search round-trip); a render path that touches zero filesystem;
+config loads from injected env; cold-start renders a page from compiled AST.
+
+---
+
+## Chunk 23: Drop-in Themes — Upload, Unzip & Compile
+
+**Goal**: The "cool factor" feature — drop in any phpBB2 theme `.zip` and
+have it mostly just work, without baking themes into the image. Builds
+directly on the Chunk 21 compiler + loader.
+
+Data-not-code is the safety property that makes this tractable: a malicious
+`.tpl` can only describe blocks and `{VAR}` slots, never execute. The unzip
+is the only place untrusted bytes touch the system — harden that, and the
+escape-by-default renderer covers the output.
+
+- [ ] **Admin upload UI**: accept a theme `.zip`, store raw in Supabase
+  Storage under a content hash (`themes/{hash}/...`).
+- [ ] **Unzip** with a pure-JS, runtime-agnostic lib (`fflate`) — no
+  `node:zlib`. Harden: reject zip-slip (`../` entry names), cap entry count
+  + uncompressed size (zip-bomb), allowlist `.tpl`/`.css`/image extensions.
+- [ ] **Compile** each `.tpl` → AST JSON, write to `compiled_templates`
+  keyed by `{theme_hash, handle}`. Run async off the request path via
+  Supabase **Queues + Cron** (the Supabase-native job primitive); the same
+  logic maps to CF Queues/Workflows or an inline Node call on other stacks.
+- [ ] **Content-addressed cache key.** In-memory memo keyed by `theme_hash`
+  so a re-upload (new hash) is an automatic miss — no manual invalidation,
+  no stale renders across isolates.
+- [ ] **Theme switching** in admin board config (select active theme by
+  hash); coherence between the raw `.zip` and its compiled AST set enforced
+  by the shared hash.
+- [ ] **Distribution note (deferred while personal):** shipped artifact
+  contains zero theme files — themes are user-supplied at runtime, which
+  also keeps the licensing boundary clean if this ever leaves "just for me."
+
+**Tests**: Upload → unzip → compile → render an unmodified third-party
+phpBB2 theme; zip-slip and oversized-entry uploads are rejected; re-upload
+invalidates the in-memory cache; malicious `.tpl` cannot execute (renders as
+inert escaped output).
+
+---
+
+## Chunk 24: phpBB2 ⇄ Plank Differential Parity Harness
+
+**Goal**: Stop treating template fidelity as "best effort." Run original
+phpBB2 (the docker-compose rig) and Plank side by side over identical data,
+diff their rendered output route-by-route, and drive discrepancies to zero.
+Then reuse the harness as the acceptance test for additional themes (Chunk 23).
+
+**Why it's more viable than the original "won't be pixel-perfect" assumption**:
+both serve the *same* Solaris `.tpl`, `.css`, and images, so the browser
+styles both identically. Divergence collapses to "did the right datum land in
+the right slot" — exactly what a structural diff catches.
+
+**Scope: END-USER surface only. Admin side is explicitly OUT.** The nostalgia
+value is the reader/poster experience (index, viewforum, viewtopic, posting,
+profile, memberlist, search, PMs, polls, FAQ, who's-online). The admin panel
+was *intentionally* re-architected away from phpBB2's frameset (Chunk 14) and
+is held to modern standards, not phpBB2's quirks — diffing it would mean
+limiting it to phpBB2's limitations for no benefit. Exclude all `/admin/*` and
+`modcp` admin views from the harness. (Revisit only if forum-admins ever want
+that nostalgia too; for now, no.)
+
+Design — three layers: slot-classification, then structural, then pixel:
+
+- [ ] **Slot classification (do this FIRST — it's the cleanest framing).**
+  Because every dynamic value in phpBB2 lands in a template `{VAR}` / block
+  slot, we can classify each slot up front instead of pattern-masking output
+  blindly. Three buckets:
+  - **Deterministic** — same input ⇒ same output on both sides (usernames,
+    titles, post bodies, counts). These MUST match; diff them strictly.
+  - **Determinizable** — non-deterministic by default but controllable:
+    who's-online, last-visit, session state. PREFER making these
+    deterministic (freeze clock, script sessions) so we actually exercise and
+    verify all their cases, rather than ignoring them. Ignoring an online-list
+    slot means never testing that it renders right at all.
+  - **Genuinely volatile** — irreducibly time/environment-dependent (the page
+    "current time" widget, generation-time/SQL-query-count footer). Ignore
+    these slots by identity, with confidence, because we know *which* slot and
+    *why* — not via a fragile output regex.
+  The win over regex-masking: the ignore-list is a small, auditable set of
+  named slots tied to the template, and a *new* volatile slot fails loudly
+  (mismatch in a slot we didn't classify) instead of silently slipping
+  through. Derive the slot inventory from the template AST (Chunk 21) — we
+  literally have the parsed `{VAR}` positions.
+- [ ] **DOM/HTML diff is the workhorse.** Fetch both responses, normalize
+  (strip phpBB `sid=`, ignore the genuinely-volatile slots from the
+  classification above, sort attrs, collapse whitespace), diff the trees.
+  Localizes each discrepancy to an element + reason ("phpBB `class=row1`,
+  Plank `class=row2`") — actionable, unlike a red pixel blob.
+- [ ] **Pixel/screenshot diff is the acceptance gate.** Headless-browser shot
+  of each route, perceptual diff (pixelmatch/SSIM with a small tolerance,
+  never exact equality). Catches layout shifts (width attrs, column wrapping)
+  the DOM diff can't see.
+- [ ] **Route equivalence map.** phpBB `viewtopic.php?t=1&start=15` ⇄ Plank
+  `/viewtopic/1?...`; reconcile pagination math (phpBB `start=offset` vs
+  Plank `page=N`).
+- [ ] **Allowlist of *intentional* divergences** — DO NOT "fix" these back:
+  "Powered by Plank" substitution, the replaced admin layout, UUID-based
+  profile URLs, deliberate modernizations. Exclude them or they fight the
+  fix loop forever.
+
+Critical path / main cost:
+- [ ] **Get phpBB2 actually installed** in the rig (config + schema load);
+  verify the docker-compose stack comes up and serves pages.
+- [ ] **Single fixture → dual seed.** One fixture populates BOTH MySQL (phpBB)
+  and Postgres (Plank) with matching IDs/content. This is the bulk of the
+  work; without identical data, diffs are meaningless.
+- [ ] **Determinism.** Freeze/control the clock and session/online state on
+  both sides, or exclude now/session-dependent widgets (index current time,
+  who's-online, last-visit).
+
+The fix loop (where the guardrails matter):
+- [ ] Loop: diff → fix highest-signal discrepancy → re-diff. Tolerance
+  threshold + "flag for human" escape hatch so un-closable 1px gaps don't
+  spin forever.
+- [ ] **Non-negotiable invariants — parity must NEVER be bought by regressing
+  them:** escape-by-default, `markup()` discipline, CSRF tokens, ACL gates.
+  An agent tempted to `markup()` raw output to match phpBB's unescaped HTML is
+  reintroducing stored XSS — reject every such "fix."
+- [ ] **Bug-for-bug compatibility: NO. (decided)** Reproduce phpBB2's
+  *layout*, never its *bugs*. When a discrepancy traces to a genuine phpBB2
+  rendering bug, the fix is NOT to replicate the bug in Plank. Instead:
+  document the bug + the discrepancy it causes, propose a solution that
+  achieves the intended layout *without* reintroducing the bug, and
+  **escalate for human acceptance** — do not auto-resolve. These cases are
+  exactly where an autonomous loop would do damage. Maintain a
+  `KNOWN_PHPBB2_BUGS.md` log of each: the quirk, why we diverge, the chosen
+  fix.
+
+**Tests**: Zero structural diffs on the core END-USER read routes (index,
+viewforum, viewtopic, profile, memberlist; admin/modcp excluded) over the
+shared fixture; pixel diff under tolerance; intentional-divergence allowlist
+respected; every dynamic slot is classified (no unclassified slot renders
+without failing); re-runs deterministic across clock/session.
