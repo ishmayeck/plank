@@ -482,30 +482,31 @@ Why this is now possible: the only hard blocker to non-Node runtimes was
 `readFileSync` in the template engine. Chunk 21 removes it. `@supabase/
 supabase-js` v2 and Hono are both fetch-based and runtime-agnostic.
 
-- [ ] **Runtime audit.** Sweep `src/` for remaining Node-only assumptions
-  (`node:fs`, `node:path`, `process.cwd`, `import.meta.dirname` in
-  `render.ts`, `Buffer` usage, `image-size` on avatar upload). Replace or
-  guard each. The template loader is the big one; verify the rest.
+- [x] **Runtime audit.** ✅ Swept `src/` (see DEPLOYMENT.md). Only genuine
+  Node couplings left: `serveStatic`, the `@hono/node-server` entry, and
+  `dotenv` — exactly the three items below. Templates already abstracted
+  (Chunk 21); supabase-js/hono/image-size/path all portable.
 - [ ] **Supabase Edge Function entry.** Plank is one Hono app owning all
   routes; serve it as a single catch-all function (`/functions/v1/plank`)
   with a custom-domain rewrite so `/` maps to it. Hono runs on Deno, but
-  smoke-test it rather than assume.
+  smoke-test it rather than assume. **(owner: needs Supabase project)**
 - [ ] **Config/secrets.** Move env loading (`src/lib/config.ts`,
   `src/index.ts` `loadConfig()`) to work under Edge Function env injection
   (no `dotenv` at runtime; secrets via `supabase secrets set`).
+  **(owner: needs deploy target)**
 - [ ] **Static assets.** Theme CSS/images currently served by Hono from
   disk; serve from Supabase Storage (or a CDN bucket) under the compute
   target. Avatars already use Storage — align the theme assets the same way.
-- [ ] **Compiled templates at deploy.** Run the Chunk 21 compiler as a
-  deploy/seed step that writes the active theme's AST JSON to
-  `compiled_templates` (or Storage), so the function never compiles on the
-  request path — just fetch + memoize in isolate memory (co-located with
-  the DB, so the read is local, which is why this stack needs no KV).
-- [ ] **`package.json` hygiene for prod.** Move `tsx`, `typescript`,
-  `vitest`, `@types/node` to `devDependencies` so any image/bundle is lean.
-- [ ] **Document the three stacks** (Supabase-only / Supabase+CF / Supabase+
-  Node-Docker) as a deployment matrix; each is "the same engine + a
-  different `TemplateLoader` + a different job primitive for compilation."
+  **(owner: needs Storage bucket)**
+- [x] **Compiled templates at deploy.** ✅ `scripts/compile-theme.ts` walks
+  a theme dir → `{ name: serializedAst }` JSON manifest; a
+  `PrecompiledTemplateLoader` hydrates it and renders with no parser/fs. The
+  deploy step that *writes* the manifest to `compiled_templates`/Storage is
+  owner-side, but the compiler + loader + byte-identical-render proof
+  (against real Solaris) are done and tested.
+- [x] **`package.json` hygiene for prod.** ✅ Moved `tsx`/`typescript`/
+  `vitest`/`@types/node` to devDependencies.
+- [x] **Document the three stacks** ✅ — see DEPLOYMENT.md matrix.
 
 **Tests**: Full route smoke test against a deployed Edge Function (auth,
 post, view, search round-trip); a render path that touches zero filesystem;
