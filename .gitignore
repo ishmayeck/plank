@@ -7,3 +7,6 @@ vendor/
 
 # Local agent/editor state
 .claude/
+
+# Edge function bundle (built by npm run build:edge)
+supabase/functions/plank/index.ts

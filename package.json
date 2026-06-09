@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "build:edge": "node scripts/build-edge.mjs",
+    "deploy:edge": "node scripts/build-edge.mjs && supabase functions deploy plank",
     "test": "vitest",
     "test:run": "vitest run"
   },
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
