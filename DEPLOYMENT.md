@@ -49,14 +49,29 @@ the runtime-portability audit (Chunk 22) and the remaining steps to ship.
      `text/html` gets rewritten even on a raw `new Response`. HTML serving
      is only supported via the custom-domains add-on
      (https://supabase.com/docs/guides/functions/limits).
-  Options: (a) Supabase custom-domain add-on — purest Supabase, paid, and
-  still needs the `/functions/v1/plank` prefix handled (front rewrite or
-  app-emitted base path); (b) a thin proxy in front (e.g. Cloudflare
-  Worker, free tier) that maps `/` → the function path and restores the
-  content-type — fixes both problems at once, at the cost of adding CF to
-  the stack; (c) run the Node entry in a container (Fly/Railway/anything)
-  against this same hosted Supabase — works today with zero of these
-  constraints, since only compute moves.
+  **RESOLVED via option (b): Cloudflare front proxy.** The Worker
+  (`infra/cloudflare/plank-proxy.js`, deployed as `plank-proxy`) maps `/` →
+  the function path, restores Content-Type from the `x-plank-content-type`
+  marker, and tunnels the public host + real client IP. Fully functional at
+  https://plank-proxy.personal-53b.workers.dev — index, navigation, CSRF'd
+  POSTs, and per-IP rate limiting all verified end-to-end (bucket keys show
+  the real visitor IP). Remaining: attach the owner's hostname (one
+  `routes` entry in `infra/cloudflare/wrangler.jsonc` + redeploy).
+
+  **Gateway finding #3:** Supabase's functions gateway *strips inbound*
+  `x-forwarded-host` and rewrites `x-forwarded-for` (proxy egress IP), so
+  standard forwarded headers can't cross it. Custom headers pass through —
+  the Worker tunnels `x-plank-forwarded-host` / `x-plank-client-ip`, and
+  the Edge serve wrapper translates them back (the client IP into
+  `x-forwarded-for` on the inner request, so the app's `clientIp()` stays
+  proxy-agnostic). Without the host fix, hono/csrf 403s every proxied POST.
+
+  The discarded alternatives, for the record: (a) Supabase custom-domain
+  add-on — lifts the HTML rewrite but cannot mount a function at the domain
+  root, so the `/functions/v1/plank` prefix would need an app-side
+  relative-links + `<base href>` sweep (phpBB2-authentic, still viable if a
+  pure-Supabase deployment is ever wanted); (c) Node entry in a container —
+  works today, zero platform constraints, but abandons Edge compute.
 - **Board bootstrap.** Hosted DB has schema but no content: create
   categories/forums via the admin panel after promoting your first user
   (`update profiles set user_level = 1 where username = '...'` in the SQL

@@ -88,11 +88,25 @@ Deno.serve(async (req: Request) => {
   // Observed: host is already public but the scheme arrives as http (TLS
   // terminated upstream) with x-forwarded-proto=https and no
   // x-forwarded-host — so apply each forwarded part independently.
+  // The gateway STRIPS inbound x-forwarded-host, so a front proxy tunnels
+  // the public host in x-plank-forwarded-host instead (custom headers pass
+  // through). Without the right host here, hono/csrf's Origin check 403s
+  // every POST arriving via the proxy.
   const xfProto = req.headers.get("x-forwarded-proto");
   if (xfProto) url.protocol = `${xfProto}:`;
-  const xfHost = req.headers.get("x-forwarded-host");
+  const xfHost =
+    req.headers.get("x-plank-forwarded-host") ?? req.headers.get("x-forwarded-host");
   if (xfHost) url.host = xfHost;
-  const res = await app.fetch(new Request(url, req));
+
+  // Same trick for the client IP: the gateway rewrites x-forwarded-for to
+  // its own view (the proxy's egress IP), which would bucket every visitor
+  // into one rate-limit key. Translate the tunneled value back into
+  // x-forwarded-for on the inner request so the app's clientIp() helper
+  // stays proxy-agnostic.
+  const inner = new Request(url, req);
+  const tunneledIp = req.headers.get("x-plank-client-ip");
+  if (tunneledIp) inner.headers.set("x-forwarded-for", tunneledIp);
+  const res = await app.fetch(inner);
 
   // The shared *.supabase.co functions domain rewrites text/html responses
   // to text/plain (anti-phishing policy; see DEPLOYMENT.md). Declare the

@@ -1,0 +1,13 @@
+// Cloudflare Worker config for the Plank front proxy.
+// Deploy: npx wrangler deploy   (from this directory, after wrangler login)
+// The custom domain is attached via "routes" below once chosen — wrangler
+// provisions DNS + TLS automatically for zones on this account.
+{
+  "name": "plank-proxy",
+  "main": "plank-proxy.js",
+  "compatibility_date": "2026-06-01",
+  "vars": {
+    "SUPABASE_FUNCTION_HOST": "mihvmrrnevvewhaygggj.supabase.co"
+  },
+  "observability": { "enabled": true }
+}

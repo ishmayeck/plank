@@ -26,13 +26,13 @@ export default {
     upstream.pathname = `/functions/v1/plank${url.pathname}`;
 
     const headers = new Headers(request.headers);
-    headers.set("x-forwarded-host", url.hostname);
-    headers.set("x-forwarded-proto", "https");
-    // Real client IP for the function's rate limiter. Supabase's gateway
-    // may prepend its own view of the chain; clientIp() takes the first
-    // hop, so verify end-to-end after any gateway behavior change.
+    // Supabase's gateway strips inbound x-forwarded-host and rewrites
+    // x-forwarded-for, so the public host and real client IP are tunneled
+    // in custom x-plank-* headers; src/edge.ts translates them back.
+    // (Verified: custom headers pass the gateway; the standard ones don't.)
+    headers.set("x-plank-forwarded-host", url.hostname);
     const clientIp = request.headers.get("cf-connecting-ip");
-    if (clientIp) headers.set("x-forwarded-for", clientIp);
+    if (clientIp) headers.set("x-plank-client-ip", clientIp);
 
     const res = await fetch(upstream, {
       method: request.method,
