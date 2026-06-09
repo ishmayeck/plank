@@ -8,16 +8,45 @@ the runtime-portability audit (Chunk 22) and the remaining steps to ship.
 
 ## Status
 
-- ✅ **Template engine is runtime-portable.** Chunk 21 put a `TemplateLoader`
-  seam in front of the one impure dependency (`readFileSync`). Install a
-  `PrecompiledTemplateLoader` at boot via `setTemplateLoader()` and rendering
-  never touches the filesystem — it walks precompiled AST JSON. This was the
-  one hard blocker to non-Node runtimes; it's gone.
-- ✅ **devDependencies split** so a production/Edge bundle stays lean.
-- ✅ **Rate limiting is Postgres-backed**, so it already works across many
-  stateless Edge isolates (no in-process state to lose).
-- ⬜ Remaining items below need a real Supabase project + cloud credentials,
-  so they're owner-driven, not autonomously verifiable.
+**🚀 DEPLOYED (2026-06-09).** Plank runs on Supabase Edge Functions, project
+`mihvmrrnevvewhaygggj` ("Plank Test"):
+`https://mihvmrrnevvewhaygggj.supabase.co/functions/v1/plank/`
+
+- ✅ Schema: all 7 migrations pushed (`supabase db push`).
+- ✅ Compute: `src/edge.ts` bundled by esbuild (`npm run build:edge`) into a
+  single self-contained `supabase/functions/plank/index.ts` (gitignored);
+  deploy with `npm run deploy:edge`. `verify_jwt = false` in config.toml —
+  it's a public website, not a JWT-gated API.
+- ✅ Templates: compiled AST manifest uploaded to
+  `theme-assets/manifests/Solaris.json`; fetched once per isolate at cold
+  start, installed via `setTemplateLoader()`. **No filesystem at render.**
+- ✅ Static assets: Solaris theme + smilies in the public `theme-assets`
+  bucket; `/templates/*` and `/images/*` 302-redirect there.
+- ✅ Secrets: nothing to set — the platform auto-injects `SUPABASE_URL` /
+  `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`; dotenv is excluded
+  from the Edge bundle.
+- ✅ Smoke-tested live: index/faq/login/memberlist/search/viewonline 200;
+  static redirect chain 302→200; full registration POST (real CSRF dance)
+  → 302 + session cookies + user appears on memberlist.
+
+**Edge-runtime findings (encoded in `src/edge.ts`'s serve wrapper):**
+1. The function receives the **full original path**
+   (`/functions/v1/plank/...`) — the prefix is stripped before dispatch.
+2. TLS terminates upstream: `req.url` arrives `http://` with
+   `x-forwarded-proto: https` (and no `x-forwarded-host`). Unfixed, this
+   breaks hono/csrf's Origin check (scheme mismatch) and anything derived
+   from `c.req.url`. The wrapper applies forwarded proto/host to the URL.
+
+**Still open (owner decisions):**
+- **Custom domain / rewrite.** Rendered links are root-relative (`/viewforum/1`),
+  which 404s on the bare project domain — pages render, in-page navigation
+  needs a domain that maps `/` → the function.
+- **Board bootstrap.** Hosted DB has schema but no content: create
+  categories/forums via the admin panel after promoting your first user
+  (`update profiles set user_level = 1 where username = '...'` in the SQL
+  editor). A `smoketest` user (smoketest@plank.invalid) exists from the
+  deploy verification — delete or keep.
+- **Data API lockdown before go-live** (step 6 below).
 
 ## Runtime audit — Node-only assumptions in `src/`
 

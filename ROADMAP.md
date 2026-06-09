@@ -486,18 +486,19 @@ supabase-js` v2 and Hono are both fetch-based and runtime-agnostic.
   Node couplings left: `serveStatic`, the `@hono/node-server` entry, and
   `dotenv` — exactly the three items below. Templates already abstracted
   (Chunk 21); supabase-js/hono/image-size/path all portable.
-- [ ] **Supabase Edge Function entry.** Plank is one Hono app owning all
-  routes; serve it as a single catch-all function (`/functions/v1/plank`)
-  with a custom-domain rewrite so `/` maps to it. Hono runs on Deno, but
-  smoke-test it rather than assume. **(owner: needs Supabase project)**
-- [ ] **Config/secrets.** Move env loading (`src/lib/config.ts`,
-  `src/index.ts` `loadConfig()`) to work under Edge Function env injection
-  (no `dotenv` at runtime; secrets via `supabase secrets set`).
-  **(owner: needs deploy target)**
-- [ ] **Static assets.** Theme CSS/images currently served by Hono from
-  disk; serve from Supabase Storage (or a CDN bucket) under the compute
-  target. Avatars already use Storage — align the theme assets the same way.
-  **(owner: needs Storage bucket)**
+- [x] **Supabase Edge Function entry.** ✅ Deployed and smoke-tested live
+  (2026-06-09): `src/app_core.ts` (runtime-agnostic core) + `src/edge.ts`
+  (Edge entry, esbuild-bundled). Full registration round-trip verified
+  against the hosted function. Two runtime findings (full-path prefix,
+  http-scheme behind TLS termination) handled in the serve wrapper — see
+  DEPLOYMENT.md. Custom-domain rewrite for in-page links still open (owner).
+- [x] **Config/secrets.** ✅ Resolved better than planned: the platform
+  auto-injects SUPABASE_URL/ANON_KEY/SERVICE_ROLE_KEY; dotenv is simply
+  excluded from the Edge bundle. Nothing to `secrets set` yet.
+- [x] **Static assets.** ✅ Solaris theme + smilies live in the public
+  `theme-assets` bucket (migration 20260609000001); Edge routes
+  302-redirect `/templates/*` and `/images/*` there. Node entry still
+  serves from disk — same URLs, two homes.
 - [x] **Compiled templates at deploy.** ✅ `scripts/compile-theme.ts` walks
   a theme dir → `{ name: serializedAst }` JSON manifest; a
   `PrecompiledTemplateLoader` hydrates it and renders with no parser/fs. The
