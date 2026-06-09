@@ -6,6 +6,11 @@
   "name": "plank-proxy",
   "main": "plank-proxy.js",
   "compatibility_date": "2026-06-01",
+  // The Supabase-compute stack's public hostname ("sb-" prefix
+  // distinguishes it from future Node / Workers stacks of the same forum).
+  "routes": [
+    { "pattern": "sb-plank.ishmayeck.net", "custom_domain": true }
+  ],
   "vars": {
     "SUPABASE_FUNCTION_HOST": "mihvmrrnevvewhaygggj.supabase.co"
   },

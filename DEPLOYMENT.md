@@ -8,8 +8,14 @@ the runtime-portability audit (Chunk 22) and the remaining steps to ship.
 
 ## Status
 
-**🚀 DEPLOYED (2026-06-09).** Plank runs on Supabase Edge Functions, project
-`mihvmrrnevvewhaygggj` ("Plank Test"):
+**🚀 LIVE: https://sb-plank.ishmayeck.net** (the `sb-` prefix marks this as
+the Supabase-compute stack, distinguishing it from future Node / Workers
+stacks of the same forum).
+
+Plank runs on Supabase Edge Functions, project `mihvmrrnevvewhaygggj`
+("Plank Test"), fronted by the `plank-proxy` Cloudflare Worker
+(`infra/cloudflare/`) on a custom domain. Raw function URL (HTML/CSP-gated
+by the shared-domain policy, fine for curl):
 `https://mihvmrrnevvewhaygggj.supabase.co/functions/v1/plank/`
 
 - ✅ Schema: all 7 migrations pushed (`supabase db push`).
