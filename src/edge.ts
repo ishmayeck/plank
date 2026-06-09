@@ -81,7 +81,7 @@ registerApp(app);
 //    host. Rebuild it from X-Forwarded-Host/-Proto so everything derived
 //    from c.req.url — the hono/csrf Origin check, login redirects,
 //    pagination links — sees the public origin.
-Deno.serve((req: Request) => {
+Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   url.pathname =
     url.pathname.replace(/^\/functions\/v1/, "").replace(/^\/plank/, "") || "/";
@@ -92,5 +92,18 @@ Deno.serve((req: Request) => {
   if (xfProto) url.protocol = `${xfProto}:`;
   const xfHost = req.headers.get("x-forwarded-host");
   if (xfHost) url.host = xfHost;
-  return app.fetch(new Request(url, req));
+  const res = await app.fetch(new Request(url, req));
+
+  // The shared *.supabase.co functions domain rewrites text/html responses
+  // to text/plain (anti-phishing policy; see DEPLOYMENT.md). Declare the
+  // true type in a marker header that survives the rewrite, so a front
+  // proxy (infra/cloudflare/plank-proxy.js) can restore it. Harmless and
+  // redundant on a custom domain, where the rewrite doesn't happen.
+  const ct = res.headers.get("content-type");
+  if (ct && ct.includes("text/html")) {
+    const out = new Response(res.body, res);
+    out.headers.set("x-plank-content-type", ct);
+    return out;
+  }
+  return res;
 });
