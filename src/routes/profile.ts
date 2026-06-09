@@ -177,8 +177,11 @@ profile.post("/profile", async (c) => {
     } else {
       // Decode the image header to enforce dimension limits. image-size
       // only reads enough bytes to extract metadata, so this is cheap
-      // even for the 6 MB upper bound.
-      const buf = Buffer.from(await avatarFile.arrayBuffer());
+      // even for the 6 MB upper bound. Uint8Array, not Buffer: Buffer is
+      // not a global on the Deno edge runtime (this 500'd avatar uploads
+      // in production), and image-size v2's canonical input is Uint8Array
+      // anyway. Keep route code free of Node-only globals.
+      const buf = new Uint8Array(await avatarFile.arrayBuffer());
       let dims: { width?: number; height?: number };
       try {
         dims = imageSize(buf);
