@@ -58,6 +58,16 @@ the runtime-portability audit (Chunk 22) and the remaining steps to ship.
   the real visitor IP). Remaining: attach the owner's hostname (one
   `routes` entry in `infra/cloudflare/wrangler.jsonc` + redeploy).
 
+  **Gateway finding #4:** the gateway also stamps
+  `content-security-policy: default-src 'none'; sandbox` on every function
+  response — in a browser that blocks all images/CSS and even form
+  submissions, regardless of what hostname fronts the proxy. The Worker
+  strips it (parity with the Node entry, which serves no CSP). Authoring a
+  real Plank CSP is a go-live hardening item — note phpBB2 templates use
+  inline event handlers and inline scripts, so it would need
+  `'unsafe-inline'`; the escape-by-default engine remains the primary XSS
+  defense either way.
+
   **Gateway finding #3:** Supabase's functions gateway *strips inbound*
   `x-forwarded-host` and rewrites `x-forwarded-for` (proxy egress IP), so
   standard forwarded headers can't cross it. Custom headers pass through —

@@ -43,12 +43,21 @@ export default {
       redirect: "manual",
     });
 
-    const marker = res.headers.get("x-plank-content-type");
-    if (!marker) return res;
-
     const out = new Response(res.body, res);
-    out.headers.set("content-type", marker);
-    out.headers.delete("x-plank-content-type");
+
+    // The gateway stamps a lockdown CSP (default-src 'none'; sandbox) on
+    // every function response — in a browser that blocks all images, CSS,
+    // and even form submissions. Plank owns its response policy; dropping
+    // the header matches the Node entry (which serves no CSP). A
+    // Plank-authored CSP is a separate hardening item (DEPLOYMENT.md).
+    out.headers.delete("content-security-policy");
+    out.headers.delete("content-security-policy-report-only");
+
+    const marker = out.headers.get("x-plank-content-type");
+    if (marker) {
+      out.headers.set("content-type", marker);
+      out.headers.delete("x-plank-content-type");
+    }
     return out;
   },
 };
