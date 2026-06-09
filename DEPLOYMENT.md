@@ -38,9 +38,25 @@ the runtime-portability audit (Chunk 22) and the remaining steps to ship.
    from `c.req.url`. The wrapper applies forwarded proto/host to the URL.
 
 **Still open (owner decisions):**
-- **Custom domain / rewrite.** Rendered links are root-relative (`/viewforum/1`),
-  which 404s on the bare project domain — pages render, in-page navigation
-  needs a domain that maps `/` → the function.
+- **Custom domain — now load-bearing for TWO reasons.**
+  1. Rendered links are root-relative (`/viewforum/1`), which 404s on the
+     bare project domain.
+  2. **Supabase rewrites `text/html` → `text/plain` (+ nosniff) on the
+     shared `*.supabase.co` functions domain — by policy, not bug** (anti-
+     phishing; Edge Functions are positioned as API compute). Browsers
+     therefore display page source. Verified by bisection probe: an
+     explicit `text/plain` header passes through untouched; explicit
+     `text/html` gets rewritten even on a raw `new Response`. HTML serving
+     is only supported via the custom-domains add-on
+     (https://supabase.com/docs/guides/functions/limits).
+  Options: (a) Supabase custom-domain add-on — purest Supabase, paid, and
+  still needs the `/functions/v1/plank` prefix handled (front rewrite or
+  app-emitted base path); (b) a thin proxy in front (e.g. Cloudflare
+  Worker, free tier) that maps `/` → the function path and restores the
+  content-type — fixes both problems at once, at the cost of adding CF to
+  the stack; (c) run the Node entry in a container (Fly/Railway/anything)
+  against this same hosted Supabase — works today with zero of these
+  constraints, since only compute moves.
 - **Board bootstrap.** Hosted DB has schema but no content: create
   categories/forums via the admin panel after promoting your first user
   (`update profiles set user_level = 1 where username = '...'` in the SQL
