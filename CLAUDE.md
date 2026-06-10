@@ -94,10 +94,16 @@ npm run dev           # Start Hono dev server
   derive from a row (`topic_views`, `poll_options.vote_count`), call the
   RPC functions `increment_topic_views` / `increment_poll_vote` — never
   read-then-write from JS, that race-bug is what prompted the migration.
-- **Use `getSupabaseAdmin()`** from `src/db/client.ts` for the service-role
-  client. It's a singleton; don't construct your own. The per-request
-  anon client (with `setSession`) lives in the auth middleware and is
-  the only `createClient(...)` call left in the codebase.
+- **ALL data access goes through `getSupabaseAdmin()`** from
+  `src/db/client.ts` (singleton; don't construct your own). The Data API
+  is locked down (`20260609000002_data_api_lockdown.sql`): RLS is enabled
+  on every public table and `anon`/`authenticated` have no grants, so a
+  query on the per-request client returns `permission denied` — never
+  read or write data through it. The per-request anon client (the only
+  other `createClient(...)` in the codebase, in the auth middleware)
+  exists solely for Auth API calls: `setSession`, `signInWithPassword`,
+  `signOut`. Authorization is app-level (`src/lib/permissions.ts`), not
+  RLS policies.
 - **`.maybeSingle()` for "0 rows is fine" lookups.** Reserve `.single()`
   for queries that must return exactly one row (typically right after an
   insert+select).

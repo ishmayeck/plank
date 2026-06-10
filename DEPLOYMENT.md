@@ -93,7 +93,7 @@ by the shared-domain policy, fine for curl):
   (`update profiles set user_level = 1 where username = '...'` in the SQL
   editor). A `smoketest` user (smoketest@plank.invalid) exists from the
   deploy verification — delete or keep.
-- **Data API lockdown before go-live** (step 6 below).
+- ~~Data API lockdown before go-live~~ ✅ **Done (2026-06-09)** — see step 6.
 
 ## Runtime audit — Node-only assumptions in `src/`
 
@@ -133,17 +133,15 @@ portable as-is (Supabase client, Hono, `image-size`, `path`).
    Supabase Storage / a CDN bucket; update the asset URLs the templates emit.
 5. **Verify.** Route smoke test against the deployed function (auth → post →
    view → search round-trip); confirm a render path touches zero filesystem.
-6. **Data API lockdown (before go-live).** Hosted-project hardening: today the
-   app tables have no RLS and are auto-exposed via PostgREST, so the anon key
-   can read everything — including `private_messages` and poster IPs. This is
-   tolerable only because Plank is server-rendered (the anon key never ships
-   to a browser), but the correct end-state is to revoke `anon`/`authenticated`
-   table access entirely and make the service-role client the only DB path —
-   authorization is already app-level (`src/lib/permissions.ts`); the
-   per-request client uses no RLS features. Needs a migration (revokes) + a
-   sweep of the 37 anon-client read sites. Project-creation toggles
-   ("auto-expose new tables" off / "automatic RLS" on) would break the app
-   as-is — leave them at defaults and do this lockdown deliberately instead.
+6. ✅ **Data API lockdown — DONE (2026-06-09).** All data access now goes
+   through the service-role client (the per-request client survives only for
+   `setSession`/`signInWithPassword`/`signOut`), and migration
+   `20260609000002_data_api_lockdown.sql` enables RLS on every public table
+   plus revokes all PostgREST grants (and default privileges) from
+   `anon`/`authenticated`. Verified live: REST probes with a valid anon key
+   return `42501 permission denied` on `privmsgs`/`profiles`/`posts`/
+   `rate_limits`; the forum itself is unaffected (suite 385/385, live smoke
+   green). This also clears the dashboard security advisor's RLS warnings.
 
 ## Other stacks (same engine, different loader + entry)
 
