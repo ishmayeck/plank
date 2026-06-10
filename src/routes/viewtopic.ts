@@ -8,6 +8,7 @@ import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
 import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
+import { getSupabaseAdmin } from "../db/client.js";
 
 const POSTS_PER_PAGE = 15;
 
@@ -17,7 +18,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const topicId = parseInt(c.req.param("id"), 10);
   const page = parseInt(c.req.query("page") ?? "1", 10);
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   // Fetch topic with forum info, including auth_* gates we need to
   // evaluate before rendering anything.

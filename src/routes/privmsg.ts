@@ -31,7 +31,7 @@ const privmsg = new Hono();
 privmsg.get("/privmsg", async (c) => {
   const user = c.get("user");
   if (!user) return c.redirect(loginRedirect(c));
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const mode = c.req.query("mode");
 
@@ -178,7 +178,7 @@ privmsg.get("/privmsg", async (c) => {
 
 async function handleReadPM(c: any) {
   const user = c.get("user")!;
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const pmId = parseInt(c.req.query("p") ?? "0", 10);
 
   const adminDb = getSupabaseAdmin();
@@ -298,7 +298,7 @@ interface ComposeOverrides {
 
 async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   const user = c.get("user")!;
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   let recipientUsername = overrides?.recipientUsername ?? "";
   let subject = overrides?.subject ?? "";

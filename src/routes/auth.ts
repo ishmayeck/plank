@@ -174,8 +174,7 @@ auth.get("/register", async (c) => {
   const user = c.get("user");
   if (user) return c.redirect("/");
 
-  const supabase = c.get("supabase");
-  const avatarConfig = await getAvatarConfig(supabase);
+  const avatarConfig = await getAvatarConfig(getSupabaseAdmin());
   return c.html(renderRegisterPage(c, undefined, undefined, avatarConfig));
 });
 
@@ -186,7 +185,7 @@ auth.post("/register", async (c) => {
   const password = body.new_password as string;
   const passwordConfirm = body.password_confirm as string;
 
-  const supabaseForConfig = c.get("supabase");
+  const supabaseForConfig = getSupabaseAdmin();
   const avatarConfig = await getAvatarConfig(supabaseForConfig);
 
   // Rate limit account creation by IP to stop signup floods.

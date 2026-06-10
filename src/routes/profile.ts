@@ -20,7 +20,7 @@ const profile = new Hono();
 profile.get("/profile/:id", async (c) => {
   const userId = c.req.param("id");
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const { data: profileData } = await supabase
     .from("profiles")
@@ -136,7 +136,7 @@ profile.get("/profile/:id", async (c) => {
 profile.get("/profile", async (c) => {
   const user = c.get("user");
   if (!user) return c.redirect(loginRedirect(c));
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const { data: profileData } = await supabase
     .from("profiles")
@@ -321,7 +321,7 @@ profile.post("/profile", async (c) => {
 
 profile.get("/memberlist", async (c) => {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const page = parseInt(c.req.query("page") ?? "1", 10);
   const sortBy = c.req.query("sort") ?? "username";
   const order = c.req.query("order") ?? "asc";

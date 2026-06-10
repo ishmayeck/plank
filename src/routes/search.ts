@@ -15,7 +15,7 @@ const search = new Hono();
 
 search.get("/search", async (c) => {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   // Check for quick search or keyword-based search
   const keywords = c.req.query("search_keywords") ?? "";
@@ -186,7 +186,7 @@ async function handleTopicResults(
   searchTime: number
 ) {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   // Author filter resolved first so we can pass the id into the RPC,
   // or (for matching multiple users by wildcard) fall back to a
@@ -338,7 +338,7 @@ async function handlePostResults(
   searchTime: number
 ) {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   let query = adminDb
     .from("posts")
@@ -460,7 +460,7 @@ async function handlePostResults(
 
 async function handleNewPosts(c: any) {
   const user = c.get("user")!;
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const page = parseInt(c.req.query("page") ?? "1", 10);
 
   // Find posts made since user's last visit
@@ -566,7 +566,7 @@ async function handleNewPosts(c: any) {
 
 async function handleUnanswered(c: any) {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const page = parseInt(c.req.query("page") ?? "1", 10);
 
   const adminDb = getSupabaseAdmin();

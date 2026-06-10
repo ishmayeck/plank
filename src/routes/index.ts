@@ -9,7 +9,7 @@ const index = new Hono();
 
 index.get("/", async (c) => {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   // Use admin client for session queries (sessions may not be readable via anon)
   const adminDb = getSupabaseAdmin();

@@ -23,7 +23,7 @@ groupcp.get("/groupcp", async (c) => {
   // Otherwise show the group list page
   if (!user) return c.redirect(loginRedirect(c));
 
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const adminDb = getSupabaseAdmin();
 
   // Get groups user belongs to
@@ -136,7 +136,7 @@ async function renderGroupInfo(c: any, groupId: number) {
   const user = c.get("user");
   if (!user) return c.redirect(loginRedirect(c));
 
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const adminDb = getSupabaseAdmin();
 
   const { data: group } = await adminDb

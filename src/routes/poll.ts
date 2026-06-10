@@ -22,7 +22,7 @@ poll.post("/poll", async (c) => {
   }
 
   const adminDb = getSupabaseAdmin();
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   // Per-forum auth_vote gate. Fetch the topic + its parent forum to
   // resolve the ACL — the user might be allowed to view the topic but

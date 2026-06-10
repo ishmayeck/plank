@@ -30,7 +30,7 @@ function forbiddenPage(user: any): string {
 modcp.get("/modcp", async (c) => {
   const user = c.get("user");
   if (!user) return c.html(forbiddenPage(user), 403);
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const userAcls = await loadUserGroupAcls(supabase, user);
 
   const mode = c.req.query("mode") ?? "";
@@ -175,7 +175,7 @@ modcp.post("/modcp", async (c) => {
 
   // Per-forum mod check. Falls through to the global gate when the
   // form didn't include a forum id (defensive — shouldn't happen).
-  const supabaseForAcl = c.get("supabase");
+  const supabaseForAcl = getSupabaseAdmin();
   const userAcls = await loadUserGroupAcls(supabaseForAcl, user);
   if (forumId) {
     if (!canMod(forumId, user, userAcls)) return c.html(forbiddenPage(user), 403);
@@ -301,7 +301,7 @@ async function renderMovePage(
   topicIds: number[],
   sourceForumId: number
 ) {
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const { data: forums } = await supabase
     .from("forums")
@@ -440,7 +440,7 @@ modcp.get("/modcp/split", async (c) => {
   const topicId = parseInt(c.req.query("t") ?? "0", 10);
   if (!topicId) return c.text("Topic not specified", 400);
 
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const { data: topic } = await supabase
     .from("topics")
@@ -721,7 +721,7 @@ modcp.get("/modcp/ip", async (c) => {
 
   if (!post) return c.text("Post not found", 404);
 
-  const supabaseForAcl = c.get("supabase");
+  const supabaseForAcl = getSupabaseAdmin();
   const ipAcls = await loadUserGroupAcls(supabaseForAcl, user);
   if (!canMod(post.forum_id, user, ipAcls)) return c.html(forbiddenPage(user), 403);
 

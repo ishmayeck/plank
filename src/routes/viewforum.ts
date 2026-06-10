@@ -15,7 +15,7 @@ viewforum.get("/viewforum/:id", async (c) => {
   const forumId = parseInt(c.req.param("id"), 10);
   const page = parseInt(c.req.query("page") ?? "1", 10);
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   // Fetch forum details
   const { data: forum, error: forumError } = await supabase

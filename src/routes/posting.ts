@@ -26,7 +26,7 @@ posting.get("/posting", async (c) => {
   const user = c.get("user");
   if (!user) return c.redirect(loginRedirect(c));
   const mode = c.req.query("mode") ?? "newtopic";
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const userAcls = await loadUserGroupAcls(supabase, user);
 
@@ -190,7 +190,7 @@ posting.get("/posting_topic_review", async (c) => {
   const topicId = parseInt(c.req.query("t") ?? "0", 10);
   if (!topicId) return c.text("Missing topic", 400);
 
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const smilies = await loadSmilies(supabase);
   const reviewHtml = await renderTopicReview(topicId, smilies, false);
 
@@ -233,7 +233,7 @@ posting.post("/posting", async (c) => {
   const enableBBCode = body.disable_bbcode !== "on";
   const requestedTopicType = parseInt(body.topictype as string, 10) || 0;
 
-  const supabaseForAcl = c.get("supabase");
+  const supabaseForAcl = getSupabaseAdmin();
   const userAcls = await loadUserGroupAcls(supabaseForAcl, user);
 
   // Collect current poll options from form
@@ -250,7 +250,7 @@ posting.post("/posting", async (c) => {
 
   // Handle poll option add/delete (re-render form)
   if (body.add_poll_option || body.edit_poll_option || Object.keys(body).some(k => k.startsWith("del_poll_option"))) {
-    const supabase = c.get("supabase");
+    const supabase = getSupabaseAdmin();
     const smilies = await loadSmilies(supabase);
     const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
     let pollOpts = collectPollOptions();
@@ -294,7 +294,7 @@ posting.post("/posting", async (c) => {
 
   // Preview mode
   if (body.preview) {
-    const supabase = c.get("supabase");
+    const supabase = getSupabaseAdmin();
     const smilies = await loadSmilies(supabase);
     const { data: forum } = await supabase
       .from("forums")
@@ -330,7 +330,7 @@ posting.post("/posting", async (c) => {
 
   // Validation (skip for delete mode)
   if (mode !== "delete" && !message.trim()) {
-    const supabase = c.get("supabase");
+    const supabase = getSupabaseAdmin();
     const smilies = await loadSmilies(supabase);
     const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
     const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
@@ -352,7 +352,7 @@ posting.post("/posting", async (c) => {
   if (mode === "newtopic") {
     // Re-check permissions at submit time — the form may have been
     // open while group membership changed.
-    const supabase = c.get("supabase");
+    const supabase = getSupabaseAdmin();
     const { data: forum } = await supabase
       .from("forums")
       .select("*")
@@ -502,7 +502,7 @@ posting.post("/posting", async (c) => {
 
   } else if (mode === "reply" || mode === "quote") {
     // Re-check permissions at submit time.
-    const supabase = c.get("supabase");
+    const supabase = getSupabaseAdmin();
     const { data: topic } = await supabase
       .from("topics")
       .select("topic_status, forum_id, forums(*)")

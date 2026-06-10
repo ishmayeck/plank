@@ -82,7 +82,7 @@ const faqData = [
 
 pages.get("/faq", async (c) => {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
 
   const tpl = createPageTemplate({
     user: user
@@ -151,7 +151,7 @@ pages.get("/faq", async (c) => {
 
 pages.get("/viewonline", async (c) => {
   const user = c.get("user");
-  const supabase = c.get("supabase");
+  const supabase = getSupabaseAdmin();
   const adminDb = getSupabaseAdmin();
 
   // Get recent sessions (last 5 minutes)

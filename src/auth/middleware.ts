@@ -60,7 +60,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       const adminDb = getSupabaseAdmin();
 
       const [profileRes, unreadRes] = await Promise.all([
-        supabase
+        adminDb
           .from("profiles")
           .select("username, user_level, user_lastvisit, user_sig, user_attachsig")
           .eq("id", data.session.user.id)
