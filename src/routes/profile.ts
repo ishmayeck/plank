@@ -312,6 +312,36 @@ profile.post("/profile", async (c) => {
   // Handle password change
   const newPassword = body.new_password as string;
   if (newPassword && newPassword.trim()) {
+    // Re-authenticate before changing the password. The form has always
+    // rendered a "Current Password" field (L_CURRENT_PASSWORD) but the handler
+    // never read it, so anyone with a borrowed or stolen session could set a
+    // new password and convert temporary access into permanent ownership of
+    // the account — without ever knowing the old one.
+    const currentPassword = (body.cur_password as string) ?? "";
+    // Per-request anon client, never the service-role singleton: that one is
+    // shared process-wide and signInWithPassword mutates client session state.
+    const authClient = c.get("supabase");
+    const { error: reauthError } = await authClient.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (reauthError) {
+      const { data: profileData } = await adminDb
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+      return c.html(
+        renderProfileEditForm({
+          c,
+          user,
+          profileData: profileData!,
+          error: "You must enter your current password to change it.",
+          avatarConfig,
+        })
+      );
+    }
+
     const confirmPassword = body.password_confirm as string;
     if (newPassword !== confirmPassword) {
       // Re-render with error

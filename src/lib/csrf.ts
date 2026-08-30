@@ -158,6 +158,34 @@ export const csrfFormInjectionMiddleware: MiddlewareHandler = createMiddleware(
   }
 );
 
+/**
+ * Validate a CSRF token supplied in the QUERY STRING, for actions triggered by
+ * a plain link rather than a form.
+ *
+ * The admin panel's delete/reorder/resync controls are `<a href>` links in
+ * unmodified phpBB2 templates — there is no form to attach a hidden field to,
+ * and the handlers mutate on GET, which the token middleware treats as a safe
+ * method and never checks. That left them reachable by an `<img src>` on any
+ * page an admin happened to visit; forum deletion cascades to its topics and
+ * posts. Putting the token in the URL is the standard answer for link-driven
+ * actions: an attacker can't guess it, so they can't forge the link.
+ *
+ * Callers must be genuinely admin-gated as well — this only proves intent,
+ * not authority.
+ */
+export function validateQueryCsrf(c: Context): boolean {
+  if (process.env.SKIP_CSRF === "1") return true;
+  const provided = c.req.query(CSRF_FIELD);
+  const cookieToken = getCookie(c, CSRF_COOKIE);
+  if (!provided || !cookieToken) return false;
+  return timingSafeEqual(provided, cookieToken);
+}
+
+/** `&_csrf=…` suffix for building an action link. */
+export function csrfQueryParam(c: Context): string {
+  return `${CSRF_FIELD}=${encodeURIComponent(getCsrfToken(c))}`;
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

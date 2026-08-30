@@ -8,7 +8,7 @@ import { escapeHtml } from "../lib/escape.js";
 import { safeExternalUrl } from "../lib/url.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
-import { getCsrfToken } from "../lib/csrf.js";
+import { getCsrfToken, csrfQueryParam } from "../lib/csrf.js";
 import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 import { getSupabaseAdmin } from "../db/client.js";
 
@@ -153,8 +153,8 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   let topicAdminHtml = markup("");
   if (isTopicMod) {
     const lockImg = isLocked
-      ? `<a href="/modcp?mode=unlock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_unlock.gif" alt="Unlock Topic" title="Unlock Topic" border="0" /></a>`
-      : `<a href="/modcp?mode=lock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_lock.gif" alt="Lock Topic" title="Lock Topic" border="0" /></a>`;
+      ? `<a href="/modcp?mode=unlock&t=${topicId}&f=${topic.forum_id}&${csrfQueryParam(c)}"><img src="templates/Solaris/images/topic_unlock.gif" alt="Unlock Topic" title="Unlock Topic" border="0" /></a>`
+      : `<a href="/modcp?mode=lock&t=${topicId}&f=${topic.forum_id}&${csrfQueryParam(c)}"><img src="templates/Solaris/images/topic_lock.gif" alt="Lock Topic" title="Lock Topic" border="0" /></a>`;
     topicAdminHtml = markup(
       `<a href="/modcp?mode=delete&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_delete.gif" alt="Delete Topic" title="Delete Topic" border="0" /></a>&nbsp;` +
       `<a href="/modcp?mode=move&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_move.gif" alt="Move Topic" title="Move Topic" border="0" /></a>&nbsp;` +

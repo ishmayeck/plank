@@ -555,12 +555,19 @@ posting.post("/posting", async (c) => {
       return c.text("This topic is locked.", 403);
     }
 
-    // Create reply post
+    // Create reply post.
+    //
+    // forum_id comes from the TOPIC we just authorized against, never from
+    // body.forum_id. The permission checks above use topic.forums, so taking
+    // the id from the request let a reply be stamped into a forum the poster
+    // has no access to — which then drove that forum's post count and
+    // last-post pointer from attacker-controlled content, and corrupted the
+    // forum_id filter search and resyncForum depend on.
     const { data: post, error: postErr } = await adminDb
       .from("posts")
       .insert({
         topic_id: topicId,
-        forum_id: forumId,
+        forum_id: topic.forum_id,
         poster_id: user.id,
         poster_ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null,
         enable_bbcode: enableBBCode,

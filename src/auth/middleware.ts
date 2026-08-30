@@ -100,9 +100,19 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       ?? c.req.header("x-real-ip")
       ?? null;
     const adminDb = getSupabaseAdmin();
-    // Use access token prefix as session ID for logged-in users, or a cookie-based guest ID
-    const sessionId = accessToken?.slice(0, 32) ?? getCookie(c, "plank-sid") ?? crypto.randomUUID();
-    if (!accessToken && !getCookie(c, "plank-sid")) {
+    // Session id for "who's online".
+    //
+    // This used to be accessToken.slice(0, 32) for logged-in users, which is
+    // a CONSTANT: a JWT's first 32 characters are entirely its base64 header,
+    // and every token a project issues shares one header. So every logged-in
+    // user upserted into the same row — who's-online showed exactly one
+    // member, and that row carried whichever user most recently loaded a page,
+    // along with their IP and current page. Key on the user id instead, which
+    // is what the row actually represents.
+    const sessionId = user
+      ? `u:${user.id}`
+      : getCookie(c, "plank-sid") ?? crypto.randomUUID();
+    if (!user && !getCookie(c, "plank-sid")) {
       setCookie(c, "plank-sid", sessionId, GUEST_SID_COOKIE_OPTS);
     }
     // session_start is set by the column default on first insert and is

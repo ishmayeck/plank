@@ -5,7 +5,7 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
-import { formHiddenFields } from "../lib/csrf.js";
+import { formHiddenFields, validateQueryCsrf } from "../lib/csrf.js";
 import { loadUserGroupAcls, canMod, type ForumAclMap } from "../lib/permissions.js";
 
 const modcp = new Hono();
@@ -65,6 +65,9 @@ modcp.get("/modcp", async (c) => {
     }
 
     if (mode === "lock") {
+      // Mutating on GET, so the token middleware never sees it — validate the
+      // one carried in the link's query string.
+      if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
       const adminDb = getSupabaseAdmin();
       await adminDb.from("topics").update({ topic_status: 1 }).eq("id", topicId).eq("forum_id", forumId);
       const msg = `The selected topics have been locked.<br /><br />`
@@ -74,6 +77,7 @@ modcp.get("/modcp", async (c) => {
     }
 
     if (mode === "unlock") {
+      if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
       const adminDb = getSupabaseAdmin();
       await adminDb.from("topics").update({ topic_status: 0 }).eq("id", topicId).eq("forum_id", forumId);
       const msg = `The selected topics have been unlocked.<br /><br />`

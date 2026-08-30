@@ -160,15 +160,24 @@ pages.get("/viewonline", async (c) => {
   const [{ data: sessions }, jumpboxHtml] = await Promise.all([
     adminDb
       .from("sessions")
-      .select("*, profiles(id, username, user_level)")
+      // user_allow_viewonline is needed to honour "Hide your online status".
+      .select("*, profiles(id, username, user_level, user_allow_viewonline)")
       .gte("session_time", fiveMinAgo)
       .order("session_time", { ascending: false }),
     fetchAndRenderJumpbox(supabase, undefined, { user }),
   ]);
 
-  const registered = (sessions ?? []).filter(
+  // Respect the "Hide your online status" preference, the way the index
+  // already does (src/routes/index.ts). /viewonline ignored it entirely, so
+  // opting out hid you from one page and not the other. Hidden users still
+  // count as present but are not named.
+  const allRegistered = (sessions ?? []).filter(
     (s: any) => s.session_logged_in && s.profiles
   );
+  const registered = allRegistered.filter(
+    (s: any) => s.profiles?.user_allow_viewonline !== false
+  );
+  const hiddenCount = allRegistered.length - registered.length;
   const guests = (sessions ?? []).filter((s: any) => !s.session_logged_in);
 
   const tpl = createPageTemplate({
@@ -189,7 +198,9 @@ pages.get("/viewonline", async (c) => {
     L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
     S_TIMEZONE: "All times are GMT",
     JUMPBOX: jumpboxHtml,
-    TOTAL_REGISTERED_USERS_ONLINE: `Registered Users Online: ${registered.length}`,
+    TOTAL_REGISTERED_USERS_ONLINE:
+      `Registered Users Online: ${registered.length}` +
+      (hiddenCount > 0 ? `  |  Hidden Users Online: ${hiddenCount}` : ""),
     TOTAL_GUEST_USERS_ONLINE: `Guest Users Online: ${guests.length}`,
   });
 
@@ -211,7 +222,10 @@ pages.get("/viewonline", async (c) => {
       USERNAME: styledUsername,
       U_USER_PROFILE: `/profile/${encodeURIComponent(profile?.id ?? "")}`,
       LASTUPDATE: formatPhpBBDate(s.session_time),
-      FORUM_LOCATION: s.session_page ?? "Index",
+      // Deliberately NOT the raw session_page. That column records the exact
+      // path being viewed — /viewforum/<private id>, /privmsg?mode=read&p=N,
+      // /admin/... — and this page is readable by anonymous visitors.
+      FORUM_LOCATION: describeLocation(s.session_page),
       U_FORUM_LOCATION: "/",
     });
     rowIndex++;
@@ -239,5 +253,32 @@ pages.get("/markread", async (c) => {
   // In a full implementation this would update a tracking table
   return c.redirect("/");
 });
+
+/**
+ * Turn a recorded session path into a coarse, non-identifying description.
+ *
+ * sessions.session_page holds the exact path a user was last on, and
+ * /viewonline is readable by anonymous visitors — so rendering it raw handed
+ * out private forum ids, the ids of private messages being read, and which
+ * admin screens the admin was using. phpBB2 showed a location, not a URL;
+ * this shows the same kind of thing without the identifiers.
+ */
+function describeLocation(path: string | null | undefined): string {
+  if (!path || path === "/") return "Viewing the index";
+  if (path.startsWith("/viewforum")) return "Viewing a forum";
+  if (path.startsWith("/viewtopic")) return "Reading a topic";
+  if (path.startsWith("/posting")) return "Posting a message";
+  if (path.startsWith("/privmsg")) return "Viewing private messages";
+  if (path.startsWith("/profile")) return "Viewing a profile";
+  if (path.startsWith("/memberlist")) return "Viewing the member list";
+  if (path.startsWith("/search")) return "Searching the forums";
+  if (path.startsWith("/groupcp")) return "Viewing group information";
+  if (path.startsWith("/modcp")) return "Moderating";
+  if (path.startsWith("/admin")) return "Administering the board";
+  if (path.startsWith("/faq")) return "Viewing the FAQ";
+  if (path.startsWith("/viewonline")) return "Viewing who is online";
+  if (path.startsWith("/login") || path.startsWith("/register")) return "Logging in";
+  return "Viewing the index";
+}
 
 export default pages;

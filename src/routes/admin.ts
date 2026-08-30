@@ -5,7 +5,7 @@ import { createTemplate } from "../template/source.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
-import { formHiddenFields } from "../lib/csrf.js";
+import { formHiddenFields, validateQueryCsrf, csrfQueryParam } from "../lib/csrf.js";
 import { USER_LEVEL, isAdmin } from "../lib/userLevel.js";
 import { clearSmiliesCache } from "../lib/smilies.js";
 import { clearCensorCache } from "../lib/wordcensor.js";
@@ -421,7 +421,7 @@ admin.get("/admin/forums", async (c) => {
         CAT_DESC: cat.cat_title,
         U_VIEWCAT: "#",
         U_CAT_EDIT: `/admin/forums?mode=editcat&c=${cat.id}`,
-        U_CAT_DELETE: `/admin/forums?mode=deletecat&c=${cat.id}`,
+        U_CAT_DELETE: `/admin/forum-action?mode=deletecat&c=${cat.id}&${csrfQueryParam(c)}`,
         U_CAT_MOVE_UP: `/admin/forums?mode=cat_order&c=${cat.id}&dir=up`,
         U_CAT_MOVE_DOWN: `/admin/forums?mode=cat_order&c=${cat.id}&dir=down`,
         S_ADD_FORUM_NAME: `forumname_${cat.id}`,
@@ -436,7 +436,7 @@ admin.get("/admin/forums", async (c) => {
           NUM_POSTS: String(forum.forum_posts),
           U_VIEWFORUM: `/viewforum/${forum.id}`,
           U_FORUM_EDIT: `/admin/forums?mode=editforum&f=${forum.id}`,
-          U_FORUM_DELETE: `/admin/forums?mode=deleteforum&f=${forum.id}`,
+          U_FORUM_DELETE: `/admin/forum-action?mode=deleteforum&f=${forum.id}&${csrfQueryParam(c)}`,
           U_FORUM_MOVE_UP: `/admin/forums?mode=forum_order&f=${forum.id}&dir=up`,
           U_FORUM_MOVE_DOWN: `/admin/forums?mode=forum_order&f=${forum.id}&dir=down`,
           U_FORUM_RESYNC: `/admin/forums?mode=resync&f=${forum.id}`,
@@ -512,6 +512,10 @@ admin.get("/admin/forum-action", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const mode = c.req.query("mode");
+  // Link-triggered mutation on GET: the token middleware treats GET as safe,
+  // so validate the token this route carries in its URL. Without it an
+  // <img src> on any page an admin visits could fire these.
+  if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
   const adminDb = getSupabaseAdmin();
 
   if (mode === "cat_order") {
@@ -969,7 +973,7 @@ admin.get("/admin/ranks", async (c) => {
         RANK_MIN: rank.rank_special ? "-" : String(rank.rank_min),
         SPECIAL_RANK: rank.rank_special ? "Yes" : "No",
         U_RANK_EDIT: `/admin/ranks?mode=edit&id=${rank.id}`,
-        U_RANK_DELETE: `/admin/ranks?mode=delete&id=${rank.id}`,
+        U_RANK_DELETE: `/admin/rank-action?mode=delete&id=${rank.id}&${csrfQueryParam(c)}`,
       });
       rowIndex++;
     }
@@ -1049,7 +1053,7 @@ admin.get("/admin/smilies", async (c) => {
         SMILEY_IMG: smiley.smile_url,
         EMOT: smiley.emoticon ?? "",
         U_SMILEY_EDIT: `/admin/smilies?mode=edit&id=${smiley.id}`,
-        U_SMILEY_DELETE: `/admin/smilies?mode=delete&id=${smiley.id}`,
+        U_SMILEY_DELETE: `/admin/smiley-action?mode=delete&id=${smiley.id}&${csrfQueryParam(c)}`,
       });
       rowIndex++;
     }
@@ -1123,7 +1127,7 @@ admin.get("/admin/words", async (c) => {
         WORD: word.word,
         REPLACEMENT: word.replacement,
         U_WORD_EDIT: `/admin/words?mode=edit&id=${word.id}`,
-        U_WORD_DELETE: `/admin/words?mode=delete&id=${word.id}`,
+        U_WORD_DELETE: `/admin/word-action?mode=delete&id=${word.id}&${csrfQueryParam(c)}`,
       });
       rowIndex++;
     }
@@ -1176,6 +1180,10 @@ admin.get("/admin/word-action", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const mode = c.req.query("mode");
+  // Link-triggered mutation on GET: the token middleware treats GET as safe,
+  // so validate the token this route carries in its URL. Without it an
+  // <img src> on any page an admin visits could fire these.
+  if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
   const id = parseInt(c.req.query("id") ?? "0", 10);
   if (!id) return c.redirect("/admin/words");
 
@@ -1192,6 +1200,10 @@ admin.get("/admin/smiley-action", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const mode = c.req.query("mode");
+  // Link-triggered mutation on GET: the token middleware treats GET as safe,
+  // so validate the token this route carries in its URL. Without it an
+  // <img src> on any page an admin visits could fire these.
+  if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
   const id = parseInt(c.req.query("id") ?? "0", 10);
   if (!id) return c.redirect("/admin/smilies");
 
@@ -1208,6 +1220,10 @@ admin.get("/admin/rank-action", async (c) => {
   if (!isAdmin(user)) return c.text("Forbidden", 403);
 
   const mode = c.req.query("mode");
+  // Link-triggered mutation on GET: the token middleware treats GET as safe,
+  // so validate the token this route carries in its URL. Without it an
+  // <img src> on any page an admin visits could fire these.
+  if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
   const id = parseInt(c.req.query("id") ?? "0", 10);
   if (!id) return c.redirect("/admin/ranks");
 
