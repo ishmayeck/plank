@@ -5,8 +5,10 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
 import { escapeHtml } from "../lib/escape.js";
+import { safeExternalUrl } from "../lib/url.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
+import { getCsrfToken } from "../lib/csrf.js";
 import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 import { getSupabaseAdmin } from "../db/client.js";
 
@@ -133,7 +135,8 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const pollHtml = await renderPollForTopic(
     topicId,
     user?.id ?? null,
-    showViewResults
+    showViewResults,
+    getCsrfToken(c)
   );
 
   const isLocked = topic.topic_status === 1;
@@ -246,8 +249,9 @@ viewtopic.get("/viewtopic/:id", async (c) => {
       const rank = getRank(poster?.user_posts ?? 0, poster?.user_rank ?? 0, ranks ?? []);
 
       // Avatar
-      const avatar = poster?.user_avatar
-        ? markup(`<br /><img src="${escapeHtml(poster.user_avatar)}" alt="" /><br />`)
+      const posterAvatar = safeExternalUrl(poster?.user_avatar);
+      const avatar = posterAvatar
+        ? markup(`<br /><img src="${escapeHtml(posterAvatar)}" alt="" /><br />`)
         : markup("");
 
       // Action buttons (based on permissions). The edit/delete icons

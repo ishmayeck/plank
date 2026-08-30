@@ -68,8 +68,13 @@ profile.get("/profile/:id", async (c) => {
 
   tpl.loadFile("body", "profile_view_body.tpl");
 
-  const avatarImg = profileData.user_avatar
-    ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="" />`)
+  // Avatar URLs are server-generated Storage URLs today, so this is a no-op —
+  // but the admin panel exposes an allow_avatar_remote setting, and the day
+  // remote avatars are implemented this is what keeps a user-supplied scheme
+  // out of the attribute.
+  const avatarUrlSafe = safeExternalUrl(profileData.user_avatar);
+  const avatarImg = avatarUrlSafe
+    ? markup(`<img src="${escapeHtml(avatarUrlSafe)}" alt="" />`)
     : markup("");
 
   // escapeHtml alone is not enough for an href: it stops an attacker breaking
@@ -621,8 +626,8 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     L_AVATAR_EXPLAIN:
       `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`,
     L_CURRENT_IMAGE: "Current Image",
-    AVATAR: profileData.user_avatar
-      ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="Avatar" />`)
+    AVATAR: safeExternalUrl(profileData.user_avatar)
+      ? markup(`<img src="${escapeHtml(safeExternalUrl(profileData.user_avatar)!)}" alt="Avatar" />`)
       : "No avatar",
     L_DELETE_AVATAR: "Delete Image",
     L_UPLOAD_AVATAR_FILE: "Upload Avatar from your machine",

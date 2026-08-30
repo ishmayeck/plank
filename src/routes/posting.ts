@@ -254,6 +254,21 @@ posting.post("/posting", async (c) => {
   const enableBBCode = body.disable_bbcode !== "on";
   const requestedTopicType = parseInt(body.topictype as string, 10) || 0;
 
+  // Rate limit the modes that CREATE content, per user. Chunk 20 added this
+  // limiter and CLAUDE.md documented posting as covered, but the call was
+  // never actually wired up — only the import was. Edits and deletes are
+  // excluded: throttling those would strand someone mid-cleanup.
+  if (mode === "newtopic" || mode === "reply" || mode === "quote") {
+    const rl = await checkRateLimit(`posting:user:${user.id}`, RATE_LIMITS.posting);
+    if (!rl.allowed) {
+      c.header("Retry-After", String(rl.retryAfter));
+      return c.text(
+        `You are posting too quickly. Please try again in ${retryAfterText(rl.retryAfter)}.`,
+        429
+      );
+    }
+  }
+
   const supabaseForAcl = getSupabaseAdmin();
   const userAcls = await loadUserGroupAcls(supabaseForAcl, user);
 

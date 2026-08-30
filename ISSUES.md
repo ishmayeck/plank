@@ -1,4 +1,12 @@
 # Issues
+###### Inert phpBB2 sort controls (found 2026-08-30 by the CSRF form sweep)
+- [ ] `memberlist_body.tpl` and `viewforum_body.tpl` each open a
+  `<form method="post">` — phpBB2's "sort by" and "display topics from previous
+  N days" controls — but Plank registers no POST handler for `/memberlist` or
+  `/viewforum/:id`, so the Go buttons do nothing. Not a security issue (they
+  reach no state-changing code, and the CSRF injector now stamps them anyway),
+  just dead UI. Fix by adding POST handlers that redirect to the equivalent GET
+  with query params, so sorting and day-filtering actually work.
 ###### FAQ
 - [x] Links to sections in the faq page don't work.
 ###### User profile
