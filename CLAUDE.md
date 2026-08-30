@@ -77,11 +77,49 @@ npm run dev           # Start Hono dev server
   right thing.
 - **CSRF: every form needs `formHiddenFields(c, ...extraInputsHtml)`** from
   `src/lib/csrf.ts` injected into `S_HIDDEN_FIELDS`. The middleware in
-  `src/app.ts` rejects POSTs with a missing or mismatched token. Tests
+  `src/app_core.ts` rejects POSTs with a missing or mismatched token. Tests
   bypass via `SKIP_CSRF=1` (set in `vitest.config.ts`); production must
   never set that flag. The dedicated CSRF coverage in
   `test/security/csrf.test.ts` clears the flag to verify forged requests
   get 403.
+  - A **backstop** (`csrfFormInjectionMiddleware`) stamps the token into any
+    POST form in an HTML response that doesn't already carry one. Original
+    phpBB2 templates hard-code `<form method="post">` with no
+    `S_HIDDEN_FIELDS` slot inside (memberlist, viewforum, admin forum/ranks),
+    and drop-in themes (Chunk 23) will be the same — we render themes
+    unmodified, so the controller has nowhere to put the field. Keep calling
+    `formHiddenFields` where you can; the backstop is for what you can't reach.
+  - **Actions triggered by a LINK, not a form** (the admin delete/reorder/
+    resync endpoints, modcp lock/unlock) mutate on GET, which the token
+    middleware treats as safe and never checks. Those carry the token in the
+    query string: build the URL with `csrfQueryParam(c)` and validate with
+    `validateQueryCsrf(c)` in the handler.
+  - `getCsrfToken(c)` is **memoized per request**. It reads the request
+    cookie, so without the memo every call on a first visit (before any
+    cookie exists) mints a different token and only the last matches.
+- **Authorization comes from the target row, never a request field.** A
+  handler that reaches a record by id must re-derive authority from that
+  record: `canModAllTopics` for modcp targets, `loadOwnedPm` for private
+  messages, `topic.forum_id` (not `body.forum_id`) when inserting a reply.
+  Gating the GET that renders a form is not gating the POST that submits it —
+  that split is where every IDOR in the August 2026 review lived.
+- **`canDo` throws if the forum row lacks the `auth_*` column** it needs, so
+  select `forums(*)` rather than a subset when a page asks about several
+  actions. Defaulting a missing column to "unrestricted" silently granted
+  access to everyone.
+- **Queries that range ACROSS forums** (search, quick-searches, anything not
+  scoped to one forum row) must constrain on `loadAccessibleForumIds()`. They
+  can't use the single-row gate, and an empty result from that helper means
+  "nothing is reachable", never "skip the filter".
+- **User-supplied URLs need `safeExternalUrl()`** from `src/lib/url.ts`
+  before going into an `href`/`src`. `escapeHtml` prevents attribute
+  breakout but does nothing about a `javascript:` scheme, which needs none of
+  the characters it escapes.
+- **Post-processing passes over rendered HTML** (`applyCensors`,
+  `replaceSmilies`) operate on text between tags only, and substitute via a
+  replacer *function*. Running them over raw markup let a matched token
+  inside an attacker-chosen URL rewrite the surrounding attributes; passing a
+  replacement *string* let `$&`/`` $` ``/`$'` splice in nearby content.
 - **User-level checks use named predicates** (`isAdmin`, `isMod`,
   `isModOrAdmin` from `src/lib/userLevel.ts`) and `USER_LEVEL.{USER,ADMIN,MOD}`
   constants. Never write raw `userLevel === 1` or `userLevel >= 1` in
@@ -120,6 +158,13 @@ npm run dev           # Start Hono dev server
   `cleanupTestUser` from `test/util/users.ts` in `beforeAll` — it tears
   down auth.users entries by email so re-runs don't collide on
   fixed-email fixtures (`supabase db reset` doesn't truncate auth).
+- **Security tests ENUMERATE a surface; they don't sample it.**
+  `test/security/invariants.test.ts` walks every form on every page (with the
+  real CSRF middleware on, which the rest of the suite disables) and every
+  source file for unguarded URL attributes. This exists because the sampled
+  suites passed while five forms shipped without tokens and four routes
+  shipped without ACL gates — the bugs were always in the sibling nobody
+  thought to sample. When you add a page, add it to the sweep list.
 - **The test suite runs serially (`fileParallelism: false` in
   `vitest.config.ts`).** DB-backed suites share one local Supabase and
   seed fixed-email users + fixed category/forum rows; running files in

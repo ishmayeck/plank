@@ -118,6 +118,11 @@ posting.get("/posting", async (c) => {
     } else if (!canMod(f.id, user, userAcls)) {
       return c.text("You cannot edit another user's post.", 403);
     }
+    // Reply and quote both refuse a locked topic; edit did not, so "locked"
+    // stopped new posts while still allowing existing ones to be rewritten.
+    if ((post as any).topics?.topic_status === 1 && !canMod(f.id, user, userAcls)) {
+      return c.text("This topic is locked.", 403);
+    }
     forumRow = f;
     topicId = post.topic_id;
     forumId = (post as any).topics?.forum_id ?? 0;
@@ -616,7 +621,7 @@ posting.post("/posting", async (c) => {
     // Re-check permission against the current ACL state.
     const { data: existingPost } = await adminDb
       .from("posts")
-      .select("poster_id, topic_id, topics!posts_topic_id_fkey(forum_id, topic_first_post_id, forums(*))")
+      .select("poster_id, topic_id, topics!posts_topic_id_fkey(forum_id, topic_status, topic_first_post_id, forums(*))")
       .eq("id", postId)
       .maybeSingle();
 
@@ -630,6 +635,13 @@ posting.post("/posting", async (c) => {
       }
     } else if (!canMod(editForum.id, user, userAcls)) {
       return c.text("You cannot edit another user's post.", 403);
+    }
+    // Locked means locked at submit time too, not just on the form.
+    if (
+      (existingPost as any).topics?.topic_status === 1 &&
+      !canMod(editForum.id, user, userAcls)
+    ) {
+      return c.text("This topic is locked.", 403);
     }
 
     // Update post metadata

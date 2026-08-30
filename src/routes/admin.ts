@@ -499,14 +499,9 @@ admin.post("/admin/forums", async (c) => {
   return c.redirect("/admin/forums");
 });
 
-// Category/forum ordering and editing via GET actions
-
-admin.get("/admin/forums", async (c) => {
-  // This handler is already defined above, but we need to handle mode params
-  // The main GET handler above will handle rendering. We handle actions here via a separate approach.
-});
-
-// Use a catch-all approach - handle action modes in a middleware-like pattern
+// Category/forum ordering and deletion. These act on GET because the phpBB2
+// admin template drives them with plain links; the token is carried in the
+// query string and checked below.
 admin.get("/admin/forum-action", async (c) => {
   const user = c.get("user");
   if (!isAdmin(user)) return c.text("Forbidden", 403);
