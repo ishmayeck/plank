@@ -41,6 +41,19 @@ let globalAdminRefresh: string;
 
 let testCategoryId: number;
 let modForumTopicId: number;         // topic in modForumId, posted by regular user
+let privateTopicId: number;          // topic inside privateForumId
+let privatePostId: number;
+
+// Distinctive markers. If either string appears in a response for a user who
+// isn't in privGroup, content from the private forum has escaped.
+//
+// The term we SEARCH for is deliberately a third string: the results page
+// echoes the query back ("Search found 0 matches for: ..."), so searching for
+// a marker would make every assertion trivially fail on the echo rather than
+// on a real leak.
+const PRIVATE_TOPIC_TITLE = "PermsPrivateTopicMarkerXYZ";
+const PRIVATE_POST_BODY = "PermsPrivateBodyMarkerXYZ";
+const PRIVATE_SEARCH_TERM = "zebrafishquux";
 
 async function createAndLogin(
   username: string,
@@ -199,6 +212,34 @@ beforeAll(async () => {
     forum_id: modForumId,
     poster_id: regularUserId,
   });
+
+  // A topic + post inside the PRIVATE forum, with distinctive strings. Any
+  // route that surfaces either of these to a non-member is leaking.
+  const { data: privTopic } = await adminDb
+    .from("topics")
+    .insert({
+      forum_id: privateForumId,
+      topic_title: PRIVATE_TOPIC_TITLE,
+      topic_poster: groupMemberUserId,
+    })
+    .select()
+    .single();
+  privateTopicId = privTopic!.id;
+  const { data: privPost } = await adminDb
+    .from("posts")
+    .insert({
+      topic_id: privateTopicId,
+      forum_id: privateForumId,
+      poster_id: groupMemberUserId,
+    })
+    .select()
+    .single();
+  privatePostId = privPost!.id;
+  await adminDb.from("posts_text").insert({
+    post_id: privatePostId,
+    post_subject: PRIVATE_TOPIC_TITLE,
+    post_text: `${PRIVATE_POST_BODY} ${PRIVATE_SEARCH_TERM}`,
+  });
 });
 
 afterAll(async () => {
@@ -287,6 +328,111 @@ describe("Per-forum ACLs: auth_post", () => {
     const res = await app.request(`/posting?mode=newtopic&f=${postOnlyForumId}`, {
       headers: cookies(globalAdminAccess, globalAdminRefresh),
     });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("Search respects per-forum ACLs", () => {
+  // Search ranges across forums rather than starting from one, so it can't
+  // use the single-row gate the other routes use. Every one of its query
+  // paths needs the readable-forum filter, and each is tested separately
+  // because they are four independent queries that each forgot it.
+
+  it("keyword search over post bodies hides private content from a guest", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=posts`
+    );
+    const html = await res.text();
+    expect(html).not.toContain(PRIVATE_POST_BODY);
+    expect(html).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("keyword search over post bodies hides private content from a non-member", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=posts`,
+      { headers: cookies(regularAccess, regularRefresh) }
+    );
+    const html = await res.text();
+    expect(html).not.toContain(PRIVATE_POST_BODY);
+  });
+
+  it("still finds private content for a member of the forum's group", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=posts`,
+      { headers: cookies(groupMemberAccess, groupMemberRefresh) }
+    );
+    const html = await res.text();
+    expect(html).toContain(PRIVATE_POST_BODY);
+  });
+
+  it("topic search hides private topic titles from a guest", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=topics`
+    );
+    expect(await res.text()).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("topic search still returns private topics to a member", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=topics`,
+      { headers: cookies(groupMemberAccess, groupMemberRefresh) }
+    );
+    expect(await res.text()).toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("explicitly targeting the private forum id returns nothing for a non-member", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&forum_id=${privateForumId}&show_results=posts`,
+      { headers: cookies(regularAccess, regularRefresh) }
+    );
+    expect(await res.text()).not.toContain(PRIVATE_POST_BODY);
+  });
+
+  it("the unanswered quick search hides private topics from a guest", async () => {
+    const res = await app.request("/search?mode=unanswered");
+    expect(await res.text()).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("the new-posts quick search hides private topics from a non-member", async () => {
+    const res = await app.request("/search?mode=newposts", {
+      headers: cookies(regularAccess, regularRefresh),
+    });
+    expect(await res.text()).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("the search form's forum dropdown omits forums the viewer cannot read", async () => {
+    const res = await app.request("/search", {
+      headers: cookies(regularAccess, regularRefresh),
+    });
+    const html = await res.text();
+    expect(html).not.toContain("Perms Private");
+    expect(html).toContain("Perms ModForum");
+  });
+});
+
+describe("Topic review (iframe helper) respects per-forum ACLs", () => {
+  it("returns 404 for a guest on a private topic", async () => {
+    const res = await app.request(`/posting_topic_review?t=${privateTopicId}`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain(PRIVATE_POST_BODY);
+  });
+
+  it("returns 404 for a logged-in non-member", async () => {
+    const res = await app.request(`/posting_topic_review?t=${privateTopicId}`, {
+      headers: cookies(regularAccess, regularRefresh),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("renders for a member of the forum's group", async () => {
+    const res = await app.request(`/posting_topic_review?t=${privateTopicId}`, {
+      headers: cookies(groupMemberAccess, groupMemberRefresh),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("renders for a topic in a public forum", async () => {
+    const res = await app.request(`/posting_topic_review?t=${modForumTopicId}`);
     expect(res.status).toBe(200);
   });
 });

@@ -191,6 +191,27 @@ posting.get("/posting_topic_review", async (c) => {
   if (!topicId) return c.text("Missing topic", 400);
 
   const supabase = getSupabaseAdmin();
+
+  // This renders the full text of the topic's last 15 posts, so it needs the
+  // same gate as viewtopic. It had none at all — being an iframe helper made
+  // it easy to overlook, but it is a plain GET anyone can request directly.
+  const user = c.get("user");
+  const { data: topic } = await supabase
+    .from("topics")
+    .select("id, forums(*)")
+    .eq("id", topicId)
+    .maybeSingle();
+  if (!topic) return c.text("Topic not found", 404);
+
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  const reviewForum = (topic as any).forums;
+  if (!canDo("view", reviewForum, user, userAcls)) {
+    return c.text("Topic not found", 404);
+  }
+  if (!canDo("read", reviewForum, user, userAcls)) {
+    return c.text("You do not have permission to read this forum.", 403);
+  }
+
   const smilies = await loadSmilies(supabase);
   const reviewHtml = await renderTopicReview(topicId, smilies, false);
 

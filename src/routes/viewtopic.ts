@@ -25,7 +25,10 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const { data: topic, error: topicError } = await supabase
     .from("topics")
     .select(
-      "*, forums(id, forum_name, auth_view, auth_read)"
+      // forums(*) — not a column subset. This page asks canDo() about
+      // reply/post/edit/delete as well as view/read, and canDo now throws
+      // on a column the select didn't fetch rather than defaulting open.
+      "*, forums(*)"
     )
     .eq("id", topicId)
     .maybeSingle();

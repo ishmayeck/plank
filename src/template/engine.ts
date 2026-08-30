@@ -403,25 +403,38 @@ function renderValue(value: TemplateValue | undefined): string {
   return typeof value === "string" ? escapeHtml(value) : value.html;
 }
 
+/**
+ * Substitute `{VAR}` and `{block.VAR}` placeholders in one pass.
+ *
+ * SECURITY: this MUST remain a single `replace` over the template text.
+ * Two sequential passes (namespaced, then root) would re-scan the output of
+ * the first — and since escapeHtml deliberately leaves `{` and `}` alone,
+ * user content rendered through a block variable could then name and expand
+ * arbitrary root variables, including MarkupString ones that emit raw HTML.
+ * A post body of `{S_HIDDEN_FIELDS}` printed the viewer's own CSRF token;
+ * `{S_TOPIC_ADMIN}` forged moderator controls. `String.replace` never
+ * re-scans what a replacement function returns, so one pass closes it.
+ */
 function substituteVars(
   text: string,
   rootVars: Record<string, TemplateValue>,
   scope: BlockScope
 ): string {
-  // Replace namespaced variables first: {block.child.VAR} or {block.VAR}
-  text = text.replace(
-    /\{(([a-z0-9_-]+\.)+)([a-z0-9_-]+)\}/gi,
-    (_match, namespace: string, _lastDot: string, varname: string) => {
-      return renderValue(resolveNamespacedVar(namespace, varname, scope));
+  return text.replace(
+    /\{(?:(([a-z0-9_-]+\.)+)([a-z0-9_-]+)|([a-z0-9_-]+))\}/gi,
+    (
+      _match,
+      namespace: string | undefined,
+      _lastDot: string | undefined,
+      namespacedVar: string | undefined,
+      rootVar: string | undefined
+    ) => {
+      if (namespace) {
+        return renderValue(resolveNamespacedVar(namespace, namespacedVar!, scope));
+      }
+      return renderValue(rootVars[rootVar!]);
     }
   );
-
-  // Replace root-level variables: {VAR}
-  text = text.replace(/\{([a-z0-9_-]+)\}/gi, (_match, varname: string) => {
-    return renderValue(rootVars[varname]);
-  });
-
-  return text;
 }
 
 function resolveNamespacedVar(
