@@ -437,6 +437,161 @@ describe("Topic review (iframe helper) respects per-forum ACLs", () => {
   });
 });
 
+describe("ModCP actions authorize the TARGET, not the submitted forum id", () => {
+  // The POST handler gated on body.f — which only proves the user moderates
+  // *some* forum — and then acted on topic ids from the body with no forum
+  // predicate. Each action is tested separately because they were four
+  // independent statements that each skipped the check.
+
+  async function modcpPost(
+    fields: Record<string, string>,
+    access: string,
+    refresh: string
+  ) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    return app.request("/modcp", {
+      method: "POST",
+      body: form,
+      headers: cookies(access, refresh),
+    });
+  }
+
+  it("a per-forum mod cannot delete a topic in a forum they do not moderate", async () => {
+    await modcpPost(
+      { f: String(modForumId), delete: "1", "topic_id_list[]": String(privateTopicId) },
+      perForumModAccess,
+      perForumModRefresh
+    );
+    const { data } = await adminDb
+      .from("topics")
+      .select("id")
+      .eq("id", privateTopicId)
+      .maybeSingle();
+    expect(data).not.toBeNull();
+  });
+
+  it("a per-forum mod cannot lock a topic in a forum they do not moderate", async () => {
+    await modcpPost(
+      { f: String(modForumId), lock: "1", "topic_id_list[]": String(privateTopicId) },
+      perForumModAccess,
+      perForumModRefresh
+    );
+    const { data } = await adminDb
+      .from("topics")
+      .select("topic_status")
+      .eq("id", privateTopicId)
+      .maybeSingle();
+    expect(data!.topic_status).toBe(0);
+  });
+
+  it("a per-forum mod cannot move a private topic into a forum they moderate", async () => {
+    // This was the disclosure primitive: relocate content out of a forum you
+    // cannot even view, then read it at /viewtopic.
+    await modcpPost(
+      {
+        f: String(modForumId),
+        mode: "move",
+        confirm: "1",
+        new_forum_id: String(modForumId),
+        "topic_id_list[]": String(privateTopicId),
+      },
+      perForumModAccess,
+      perForumModRefresh
+    );
+    const { data } = await adminDb
+      .from("topics")
+      .select("forum_id")
+      .eq("id", privateTopicId)
+      .maybeSingle();
+    expect(data!.forum_id).toBe(privateForumId);
+  });
+
+  it("a per-forum mod cannot move their own topic into a forum they do not moderate", async () => {
+    const { data: topic } = await adminDb
+      .from("topics")
+      .insert({
+        forum_id: modForumId,
+        topic_title: "Mod forum topic to move out",
+        topic_poster: regularUserId,
+      })
+      .select()
+      .single();
+
+    await modcpPost(
+      {
+        f: String(modForumId),
+        mode: "move",
+        confirm: "1",
+        new_forum_id: String(privateForumId),
+        "topic_id_list[]": String(topic!.id),
+      },
+      perForumModAccess,
+      perForumModRefresh
+    );
+
+    const { data: after } = await adminDb
+      .from("topics")
+      .select("forum_id")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(after!.forum_id).toBe(modForumId);
+    await adminDb.from("topics").delete().eq("id", topic!.id);
+  });
+
+  it("a per-forum mod CAN still lock a topic in their own forum", async () => {
+    const { data: topic } = await adminDb
+      .from("topics")
+      .insert({
+        forum_id: modForumId,
+        topic_title: "Lockable topic",
+        topic_poster: regularUserId,
+      })
+      .select()
+      .single();
+
+    await modcpPost(
+      { f: String(modForumId), lock: "1", "topic_id_list[]": String(topic!.id) },
+      perForumModAccess,
+      perForumModRefresh
+    );
+
+    const { data: after } = await adminDb
+      .from("topics")
+      .select("topic_status")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(after!.topic_status).toBe(1);
+    await adminDb.from("topics").delete().eq("id", topic!.id);
+  });
+
+  it("a global admin can still act across forums", async () => {
+    const { data: topic } = await adminDb
+      .from("topics")
+      .insert({
+        forum_id: privateForumId,
+        topic_title: "Admin-lockable topic",
+        topic_poster: regularUserId,
+      })
+      .select()
+      .single();
+
+    await modcpPost(
+      { f: String(privateForumId), lock: "1", "topic_id_list[]": String(topic!.id) },
+      globalAdminAccess,
+      globalAdminRefresh
+    );
+
+    const { data: after } = await adminDb
+      .from("topics")
+      .select("topic_status")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(after!.topic_status).toBe(1);
+    await adminDb.from("topics").delete().eq("id", topic!.id);
+  });
+});
+
 describe("Per-forum mod (auth_mod bit)", () => {
   it("per-forum mod can access modcp for their forum", async () => {
     const res = await app.request(`/modcp?f=${modForumId}`, {
