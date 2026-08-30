@@ -3,6 +3,7 @@ import { createMiddleware } from "hono/factory";
 import { getCookie, setCookie } from "hono/cookie";
 import { markup, type MarkupString } from "./markup.js";
 import { escapeHtml } from "./escape.js";
+import { CSRF_COOKIE_OPTS } from "../auth/cookies.js";
 
 const CSRF_COOKIE = "plank-csrf";
 const CSRF_FIELD = "_csrf";
@@ -35,12 +36,7 @@ export function getCsrfToken(c: Context): string {
   let token = getCookie(c, CSRF_COOKIE);
   if (!token) {
     token = generateToken();
-    setCookie(c, CSRF_COOKIE, token, {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
+    setCookie(c, CSRF_COOKIE, token, CSRF_COOKIE_OPTS);
   }
   c.set("csrfToken", token);
   return token;

@@ -4,7 +4,7 @@ import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, render
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getSupabaseAdmin } from "../db/client.js";
-import { getAvatarConfig, type AvatarConfig } from "../lib/avatar.js";
+import { getAvatarConfig, sniffImageFormat, type AvatarConfig } from "../lib/avatar.js";
 import { escapeHtml } from "../lib/escape.js";
 import { safeExternalUrl, normalizeWebsiteInput } from "../lib/url.js";
 import { markup } from "../lib/markup.js";
@@ -197,12 +197,22 @@ profile.post("/profile", async (c) => {
       // in production), and image-size v2's canonical input is Uint8Array
       // anyway. Keep route code free of Node-only globals.
       const buf = new Uint8Array(await avatarFile.arrayBuffer());
-      let dims: { width?: number; height?: number };
-      try {
-        dims = imageSize(buf);
-      } catch {
-        avatarError = "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
-        dims = {};
+      let dims: { width?: number; height?: number } = {};
+
+      // Verify the magic number BEFORE image-size touches the bytes. The
+      // declared content-type above is client-supplied; image-size dispatches
+      // on the real bytes and has unfixed hang bugs in parsers we never want
+      // to reach (ICNS/JXL/HEIF).
+      if (!sniffImageFormat(buf)) {
+        avatarError =
+          "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
+      } else {
+        try {
+          dims = imageSize(buf);
+        } catch {
+          avatarError = "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
+          dims = {};
+        }
       }
       if (!avatarError) {
         const w = dims.width ?? 0;

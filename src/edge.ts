@@ -81,7 +81,49 @@ registerApp(app);
 //    host. Rebuild it from X-Forwarded-Host/-Proto so everything derived
 //    from c.req.url — the hono/csrf Origin check, login redirects,
 //    pagination links — sees the public origin.
+/**
+ * Shared secret proving a request came through our front proxy.
+ *
+ * The raw function URL (…supabase.co/functions/v1/plank/) is public and
+ * verify_jwt is false, so anyone can reach the app directly, bypassing the
+ * Cloudflare Worker entirely. That matters because everything the Worker adds
+ * — the real client IP, the public host — arrives as ordinary custom headers
+ * this file trusts unconditionally. Direct callers could therefore supply
+ * their own x-plank-client-ip and rotate it per request, which defeats the
+ * per-IP login and registration rate limiting completely, and forge the poster
+ * IPs recorded for the mod tools.
+ *
+ * Enforcement is OPT-IN so that deploying this code cannot lock a running
+ * site out before the secret exists on both sides:
+ *   supabase secrets set PLANK_PROXY_SECRET=<value>
+ *   wrangler secret put PLANK_PROXY_SECRET   (same value)
+ * Until it is set on the function we log once and behave as before.
+ */
+const PROXY_SECRET = process.env.PLANK_PROXY_SECRET;
+if (!PROXY_SECRET) {
+  console.warn(
+    "[plank] PLANK_PROXY_SECRET is not set — the function is reachable " +
+      "directly, so x-plank-client-ip is spoofable and per-IP rate limiting " +
+      "can be bypassed. See DEPLOYMENT.md."
+  );
+}
+
+function secretMatches(provided: string | null): boolean {
+  if (!PROXY_SECRET) return true; // not enforcing yet
+  if (!provided || provided.length !== PROXY_SECRET.length) return false;
+  let diff = 0;
+  for (let i = 0; i < provided.length; i++) {
+    diff |= provided.charCodeAt(i) ^ PROXY_SECRET.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 Deno.serve(async (req: Request) => {
+  if (!secretMatches(req.headers.get("x-plank-proxy-secret"))) {
+    // Deliberately terse: this is not a route, it's the front door.
+    return new Response("Not found", { status: 404 });
+  }
+
   const url = new URL(req.url);
   url.pathname =
     url.pathname.replace(/^\/functions\/v1/, "").replace(/^\/plank/, "") || "/";
