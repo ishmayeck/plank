@@ -6,6 +6,7 @@ import { generatePagination } from "../lib/pagination.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { getAvatarConfig, type AvatarConfig } from "../lib/avatar.js";
 import { escapeHtml } from "../lib/escape.js";
+import { safeExternalUrl, normalizeWebsiteInput } from "../lib/url.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
 import { loginRedirect } from "./auth.js";
@@ -71,8 +72,17 @@ profile.get("/profile/:id", async (c) => {
     ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="" />`)
     : markup("");
 
-  const safeWebsite = profileData.user_website
-    ? markup(`<a href="${escapeHtml(profileData.user_website)}" target="_blank">${escapeHtml(profileData.user_website)}</a>`)
+  // escapeHtml alone is not enough for an href: it stops an attacker breaking
+  // out of the attribute, but a `javascript:` scheme needs none of the
+  // characters it escapes. Unlinkable values render as inert text so legacy
+  // rows written before validation existed can't fire either.
+  const websiteUrl = safeExternalUrl(profileData.user_website);
+  const safeWebsite = websiteUrl
+    ? markup(
+        `<a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(websiteUrl)}</a>`
+      )
+    : profileData.user_website
+    ? markup(escapeHtml(profileData.user_website))
     : markup("");
 
   tpl.assignVars({
@@ -242,10 +252,33 @@ profile.post("/profile", async (c) => {
     }
   }
 
+  // Reject unsafe website schemes with a real message rather than silently
+  // dropping the value, so the user knows why their link didn't save.
+  const normalizedWebsite = normalizeWebsiteInput(body.website as string);
+  if (normalizedWebsite === null) {
+    const { data: profileData } = await adminDb
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+    return c.html(
+      renderProfileEditForm({
+        c,
+        user,
+        profileData: profileData!,
+        error:
+          "Your website address must be a normal web link (http:// or https://).",
+        avatarConfig,
+      })
+    );
+  }
+
   // Build update object
   const updates: Record<string, any> = {
     user_from: (body.location as string) ?? "",
-    user_website: (body.website as string) ?? "",
+    // Normalized on write too, so the stored value is already safe and a
+    // bare "example.com" still becomes a working link.
+    user_website: normalizedWebsite,
     user_occ: (body.occupation as string) ?? "",
     user_interests: (body.interests as string) ?? "",
     user_sig: (body.signature as string) ?? "",
@@ -422,8 +455,11 @@ profile.get("/memberlist", async (c) => {
           ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(member.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`)
           : markup(""),
         EMAIL_IMG: member.user_viewemail ? "[email]" : "",
-        WWW_IMG: member.user_website
-          ? markup(`<a href="${escapeHtml(member.user_website)}" target="_blank"><img src="templates/Solaris/images/icon_www.gif" alt="Website" border="0" /></a>`)
+        // Memberlist is visible to every visitor, so an unsafe scheme here
+        // reached the widest audience of any render site. No link at all
+        // rather than a link that can't be trusted.
+        WWW_IMG: safeExternalUrl(member.user_website)
+          ? markup(`<a href="${escapeHtml(safeExternalUrl(member.user_website)!)}" target="_blank" rel="noopener noreferrer"><img src="templates/Solaris/images/icon_www.gif" alt="Website" border="0" /></a>`)
           : markup(""),
       });
       rowIndex++;
