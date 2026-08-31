@@ -27,6 +27,28 @@ export interface ThemeRecord {
   theme_hash: string;
   installed_at: string;
   is_active: boolean;
+  /** The theme's own stylesheet filename, e.g. "Solaris.css". */
+  theme_stylesheet: string | null;
+}
+
+/**
+ * The theme's top-level stylesheet.
+ *
+ * phpBB2's overall_header.tpl links `templates/<Name>/{T_HEAD_STYLESHEET}`,
+ * and themes name that file after themselves (Solaris.css, subSilver.css).
+ * Prefer <Name>.css when the archive ships it, otherwise take the first
+ * stylesheet at the theme root — subdirectories hold the admin and print
+ * stylesheets, which are not the board's.
+ */
+export function detectStylesheet(pkg: ThemePackage): string | null {
+  const topLevel = pkg.assetNames.filter(
+    (n) => n.toLowerCase().endsWith(".css") && !n.includes("/")
+  );
+  if (topLevel.length === 0) return null;
+  const named = topLevel.find(
+    (n) => n.toLowerCase() === `${pkg.name.toLowerCase()}.css`
+  );
+  return named ?? topLevel[0]!;
 }
 
 export class ThemeStoreError extends Error {}
@@ -91,7 +113,11 @@ export async function installTheme(
   const { data, error } = await db
     .from("themes")
     .upsert(
-      { theme_name: pkg.name, theme_hash: pkg.hash },
+      {
+        theme_name: pkg.name,
+        theme_hash: pkg.hash,
+        theme_stylesheet: detectStylesheet(pkg),
+      },
       { onConflict: "theme_hash" }
     )
     .select()

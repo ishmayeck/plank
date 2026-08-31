@@ -14,6 +14,7 @@ import {
   deleteTheme,
   getActiveThemeRecord,
   fetchThemeManifest,
+  detectStylesheet,
   ThemeStoreError,
 } from "../../src/lib/theme_store.js";
 import {
@@ -60,14 +61,24 @@ beforeAll(async () => {
   }
   pkg = await ingestThemeZip(zipSync(entries));
 
-  // A second, distinct package so activation has somewhere to move to.
-  variantPkg = await ingestThemeZip(
-    zipSync({
-      "Variant/overall_header.tpl": new TextEncoder().encode("<html><body>{PAGE_TITLE}"),
-      "Variant/overall_footer.tpl": new TextEncoder().encode("</body></html>"),
-      "Variant/Variant.css": new TextEncoder().encode("body{}"),
-    })
-  );
+  // A second, distinct package so activation has somewhere to move to. Built
+  // as a full copy of Solaris under another name, with the stylesheet renamed
+  // to match — a minimal two-template archive can't render a real page, and a
+  // renamed stylesheet is exactly the case that broke T_HEAD_STYLESHEET.
+  const variantEntries: Record<string, Uint8Array> = {};
+  for (const rel of walk(SOLARIS_DIR)) {
+    const posix = rel.split("\\").join("/");
+    const target = posix === "Solaris.css" ? "Variant.css" : posix;
+    variantEntries[`Variant/${target}`] = new Uint8Array(
+      readFileSync(join(SOLARIS_DIR, rel))
+    );
+  }
+  variantPkg = await ingestThemeZip(zipSync(variantEntries));
+
+  // A leftover active theme (from a previous run, or from poking at the dev
+  // server) would make the first assertion below fail for the wrong reason.
+  await deactivateAllThemes(adminDb);
+  clearThemeRuntimeCache();
 });
 
 afterEach(async () => {
@@ -143,6 +154,53 @@ describe("theme store", () => {
       (await listThemes(adminDb)).some((t) => t.theme_hash === variantPkg.hash)
     ).toBe(false);
     await expect(fetchThemeManifest(adminDb, variantPkg.hash)).rejects.toThrow();
+  });
+});
+
+describe("stylesheet detection", () => {
+  // phpBB2 themes name their stylesheet after themselves and the header links
+  // it as templates/<Name>/{T_HEAD_STYLESHEET}. Plank hardcoded "Solaris.css",
+  // so an activated theme rendered with correct markup and NO styling — the
+  // kind of break that every existing test passed straight through, because
+  // they assert on HTML and this is a missing stylesheet.
+  it("prefers a stylesheet named after the theme", () => {
+    expect(
+      detectStylesheet({
+        name: "Solaris",
+        assetNames: ["images/logo.gif", "admin/subSilver.css", "Solaris.css"],
+      } as ThemePackage)
+    ).toBe("Solaris.css");
+  });
+
+  it("ignores stylesheets in subdirectories", () => {
+    // admin/ and print/ stylesheets are not the board's.
+    expect(
+      detectStylesheet({
+        name: "Foo",
+        assetNames: ["admin/subSilver.css", "print/print.css"],
+      } as ThemePackage)
+    ).toBeNull();
+  });
+
+  it("falls back to the first top-level stylesheet under another name", () => {
+    expect(
+      detectStylesheet({ name: "Foo", assetNames: ["theme.css"] } as ThemePackage)
+    ).toBe("theme.css");
+  });
+
+  it("records the detected stylesheet on install", async () => {
+    const record = await installTheme(adminDb, pkg);
+    expect(record.theme_stylesheet).toBe("Solaris.css");
+  });
+
+  it("links the active theme's own stylesheet in the rendered page", async () => {
+    await installTheme(adminDb, variantPkg);
+    await activateTheme(adminDb, variantPkg.hash);
+    clearThemeRuntimeCache();
+
+    const html = await (await app.request("/")).text();
+    expect(html).toContain("Variant.css");
+    expect(html).not.toContain("Solaris.css");
   });
 });
 

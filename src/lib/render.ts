@@ -8,6 +8,7 @@ import {
   loadUserGroupAcls,
   type ForumAclMap,
 } from "./permissions.js";
+import { currentStylesheet } from "./theme_runtime.js";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -65,7 +66,7 @@ export function createPageTemplate(ctx: RenderContext): Template {
     S_CONTENT_ENCODING: "utf-8",
     SITENAME: "Plank Forum",
     PAGE_TITLE: ctx.pageTitle ?? "Index",
-    T_HEAD_STYLESHEET: "Solaris.css",
+    T_HEAD_STYLESHEET: currentStylesheet(),
     META: markup('<base href="/">'),
     NAV_LINKS: "",
 

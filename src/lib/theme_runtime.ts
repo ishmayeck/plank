@@ -28,7 +28,12 @@ import {
 interface ResolvedTheme {
   hash: string;
   name: string;
+  /** The theme's own stylesheet filename, for T_HEAD_STYLESHEET. */
+  stylesheet: string;
 }
+
+/** Stylesheet the bundled filesystem theme ships. */
+const BUNDLED_STYLESHEET = "Solaris.css";
 
 let resolved: ResolvedTheme | null = null;
 let resolvedOnce = false;
@@ -45,6 +50,15 @@ export function clearThemeRuntimeCache(): void {
 /** The active uploaded theme, or null when running on the bundled one. */
 export function currentUploadedTheme(): ResolvedTheme | null {
   return resolved;
+}
+
+/**
+ * Stylesheet filename for the active theme, for the T_HEAD_STYLESHEET
+ * template variable. Hardcoding "Solaris.css" here meant every uploaded theme
+ * rendered with the right markup and no styling at all.
+ */
+export function currentStylesheet(): string {
+  return resolved?.stylesheet ?? BUNDLED_STYLESHEET;
 }
 
 async function resolveActiveTheme(): Promise<void> {
@@ -64,7 +78,11 @@ async function resolveActiveTheme(): Promise<void> {
     const manifest = await fetchThemeManifest(db, record.theme_hash);
     setTemplateLoader(new PrecompiledTemplateLoader(manifest));
     setActiveTheme(record.theme_name);
-    resolved = { hash: record.theme_hash, name: record.theme_name };
+    resolved = {
+      hash: record.theme_hash,
+      name: record.theme_name,
+      stylesheet: record.theme_stylesheet ?? `${record.theme_name}.css`,
+    };
   } catch (err) {
     // A theme row pointing at a manifest we can't fetch must not take the
     // board down. Fall back and say so loudly.
