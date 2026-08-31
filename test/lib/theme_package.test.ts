@@ -73,6 +73,71 @@ describe("ingestThemeZip (Chunk 23 — drop-in themes)", () => {
     expect(pa.hash).not.toBe(pc.hash);
   });
 
+  describe("archive root directory", () => {
+    // Real phpBB2 theme zips wrap everything in a directory named after the
+    // theme (Solaris/overall_header.tpl). The loader resolves bare names
+    // ("overall_header.tpl"), so an unstripped root means nothing renders —
+    // and the directory name is also how the theme names itself in the
+    // templates/<Name>/images/... paths its own markup hard-codes.
+    it("strips a single common root directory and uses it as the theme name", async () => {
+      const zip = makeZip({
+        "Solaris/overall_header.tpl": "<html>{PAGE_TITLE}</html>",
+        "Solaris/index_body.tpl": "x",
+        "Solaris/Solaris.css": "body{}",
+        "Solaris/images/logo.gif": new Uint8Array([0x47, 0x49, 0x46]),
+      });
+
+      const pkg = await ingestThemeZip(zip);
+
+      expect(pkg.name).toBe("Solaris");
+      expect(Object.keys(pkg.templates).sort()).toEqual([
+        "index_body.tpl",
+        "overall_header.tpl",
+      ]);
+      expect(pkg.assetNames).toEqual(["Solaris.css", "images/logo.gif"]);
+    });
+
+    it("renders a template addressed by its bare name after stripping", async () => {
+      const zip = makeZip({ "MyTheme/body.tpl": "[{X}]" });
+      const pkg = await ingestThemeZip(zip);
+      const tpl = new Template(new PrecompiledTemplateLoader(pkg.templates));
+      tpl.loadFile("body", "body.tpl");
+      tpl.assignVars({ X: "ok" });
+      expect(tpl.render("body")).toBe("[ok]");
+    });
+
+    it("leaves names alone when entries sit at the archive root", async () => {
+      const zip = makeZip({ "a.tpl": "x", "b.css": "y" });
+      const pkg = await ingestThemeZip(zip);
+      expect(Object.keys(pkg.templates)).toEqual(["a.tpl"]);
+      expect(pkg.assetNames).toEqual(["b.css"]);
+    });
+
+    it("does not strip when there are several top-level directories", async () => {
+      const zip = makeZip({ "one/a.tpl": "x", "two/b.tpl": "y" });
+      const pkg = await ingestThemeZip(zip);
+      expect(Object.keys(pkg.templates).sort()).toEqual(["one/a.tpl", "two/b.tpl"]);
+    });
+
+    it("ignores junk directories when deciding the root", async () => {
+      // Zips made on macOS carry a __MACOSX sidecar; its entries are dropped
+      // by the extension allowlist, so they must not defeat root detection.
+      const zip = makeZip({
+        "Solaris/body.tpl": "x",
+        "__MACOSX/._body.tpl": "junk",
+      });
+      const pkg = await ingestThemeZip(zip);
+      expect(pkg.name).toBe("Solaris");
+      expect(Object.keys(pkg.templates)).toEqual(["body.tpl"]);
+    });
+
+    it("falls back to the supplied name when there is no root directory", async () => {
+      const zip = makeZip({ "body.tpl": "x" });
+      const pkg = await ingestThemeZip(zip, { fallbackName: "Uploaded" });
+      expect(pkg.name).toBe("Uploaded");
+    });
+  });
+
   describe("hardening", () => {
     it("rejects zip-slip entry names (../)", async () => {
       const zip = makeZip({
