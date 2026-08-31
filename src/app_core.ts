@@ -3,6 +3,7 @@ import { csrf } from "hono/csrf";
 import { authMiddleware } from "./auth/middleware.js";
 import { csrfTokenMiddleware, csrfFormInjectionMiddleware } from "./lib/csrf.js";
 import { securityHeadersMiddleware } from "./lib/headers.js";
+import { themeMiddleware } from "./lib/theme_runtime.js";
 import authRoutes from "./routes/auth.js";
 import indexRoute from "./routes/index.js";
 import viewforumRoute from "./routes/viewforum.js";
@@ -15,6 +16,7 @@ import pollRoute from "./routes/poll.js";
 import modcpRoute from "./routes/modcp.js";
 import groupcpRoute from "./routes/groupcp.js";
 import adminRoute from "./routes/admin.js";
+import adminThemesRoute from "./routes/admin_themes.js";
 import pagesRoute from "./routes/pages.js";
 
 /**
@@ -54,6 +56,10 @@ export function registerApp(app: Hono): Hono {
     return csrfFormInjectionMiddleware(c, next);
   });
 
+  // Resolve the active theme before anything renders. Cached after the first
+  // request; admin theme mutations invalidate it.
+  app.use("*", themeMiddleware);
+
   // Auth middleware on all routes
   app.use("*", authMiddleware);
 
@@ -70,6 +76,7 @@ export function registerApp(app: Hono): Hono {
   app.route("/", modcpRoute);
   app.route("/", groupcpRoute);
   app.route("/", adminRoute);
+  app.route("/", adminThemesRoute);
   app.route("/", pagesRoute);
 
   return app;

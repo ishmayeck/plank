@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { registerApp } from "./app_core.js";
+import { registerThemeAssetRoutes } from "./lib/theme_runtime.js";
 import { PrecompiledTemplateLoader } from "./template/loader.js";
 import { setTemplateLoader } from "./template/source.js";
 
@@ -53,6 +54,12 @@ setTemplateLoader(new PrecompiledTemplateLoader(manifest));
 // platform prefix (/functions/v1/plank, or just /plank behind a custom
 // domain) before dispatch, so the app is agnostic to how it's mounted.
 const app = new Hono();
+
+// Uploaded themes first: when one is active these redirect to its objects and
+// otherwise call next(), so the bundled-theme redirects below stay the
+// default. Must precede them, or the bundled paths match first and an
+// uploaded theme renders with Solaris's images.
+registerThemeAssetRoutes(app);
 
 // Static assets: redirect to the public bucket. Registration order mirrors
 // src/app.ts — smilies before the broader /images/* wildcard.
