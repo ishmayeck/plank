@@ -15,6 +15,7 @@ import {
 } from "../lib/labels.js";
 import { createTemplate } from "../template/source.js";
 import { checkRateLimit, RATE_LIMITS, retryAfterText } from "../lib/rate_limit.js";
+import { flagWatchersOnReply } from "../lib/watch.js";
 import { loginRedirect } from "./auth.js";
 import type { Context } from "hono";
 import { currentStylesheet } from "../lib/theme_runtime.js";
@@ -584,6 +585,11 @@ posting.post("/posting", async (c) => {
       .maybeSingle();
 
     if (postErr || !post) return c.text("Failed to create post", 500);
+
+    // Tell everyone watching this topic that something happened — except the
+    // author, who plainly knows. Awaited: fire-and-forget raced the very next
+    // page load, so a watcher checking immediately saw nothing.
+    await flagWatchersOnReply(adminDb, topicId, user.id);
 
     await adminDb.from("posts_text").insert({
       post_id: post.id,

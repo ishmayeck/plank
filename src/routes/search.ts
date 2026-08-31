@@ -7,6 +7,7 @@ import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
 import { loadAccessibleForumIds } from "../lib/permissions.js";
+import { watchedTopicIds } from "../lib/watch.js";
 
 const RESULTS_PER_PAGE = 25;
 
@@ -42,6 +43,9 @@ search.get("/search", async (c) => {
   }
   if (mode === "unanswered") {
     return handleUnanswered(c);
+  }
+  if (mode === "watched" && user) {
+    return handleWatched(c);
   }
 
   // If we have search parameters, show results
@@ -583,6 +587,109 @@ async function handleNewPosts(c: any) {
         GOTO_PAGE: "",
       });
     }
+  }
+
+  return c.html(renderPage(tpl));
+}
+
+// ─── Quick Search: Watched Topics ─────────────────────────────
+
+/**
+ * Topics this user is watching.
+ *
+ * Reuses the same list rendering as the other quick searches rather than
+ * inventing a second way to draw a topic list, and is still ACL-filtered:
+ * watching a topic doesn't grant access to it, and a forum's permissions can
+ * change after someone subscribes.
+ */
+async function handleWatched(c: any) {
+  const user = c.get("user")!;
+  const supabase = getSupabaseAdmin();
+  const page = parseInt(c.req.query("page") ?? "1", 10);
+  const adminDb = getSupabaseAdmin();
+
+  const watched = await watchedTopicIds(adminDb, user.id);
+  const offset = (page - 1) * RESULTS_PER_PAGE;
+
+  const { data: topics, count } = watched.length
+    ? await adminDb
+        .from("topics")
+        .select(
+          `*, forums(forum_name), poster:profiles!topics_topic_poster_fkey(username)`,
+          { count: "exact" }
+        )
+        .in("id", watched)
+        .in("forum_id", await readableForumIds(c))
+        .order("id", { ascending: false })
+        .range(offset, offset + RESULTS_PER_PAGE - 1)
+    : { data: [] as any[], count: 0 };
+
+  const tpl = createPageTemplate({
+    user: { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel },
+    pageTitle: "Watched topics",
+  });
+
+  tpl.loadFile("body", "search_results_topics.tpl");
+
+  const pagination = generatePagination(
+    "/search?mode=watched",
+    count ?? 0,
+    RESULTS_PER_PAGE,
+    page
+  );
+
+  tpl.assignVars({
+    U_INDEX: "/",
+    L_INDEX: "Index",
+    L_SEARCH_MATCHES: `Topics you are watching (${count ?? 0})`,
+    L_FORUM: "Forum",
+    L_TOPICS: "Topic",
+    L_AUTHOR: "Author",
+    L_REPLIES: "Replies",
+    L_VIEWS: "Views",
+    L_LASTPOST: "Last Post",
+    PAGINATION: pagination.html,
+    PAGE_NUMBER: pagination.pageNumber,
+    S_TIMEZONE: timezoneNotice(c),
+    JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
+  });
+
+  const lastPostIds = (topics ?? []).map((t: any) => t.topic_last_post_id).filter(Boolean);
+  const lastPostMap: Record<number, any> = {};
+  if (lastPostIds.length > 0) {
+    const { data: lastPosts } = await adminDb
+      .from("posts")
+      .select("id, post_time, poster_id, profiles(id, username)")
+      .in("id", lastPostIds);
+    for (const lp of lastPosts ?? []) lastPostMap[lp.id] = lp;
+  }
+
+  for (const topic of topics ?? []) {
+    const lastPost = lastPostMap[topic.topic_last_post_id];
+    const lastPostAuthor = lastPost?.profiles as any;
+    tpl.assignBlockVars("searchresults", {
+      TOPIC_FOLDER_IMG: "templates/Solaris/images/folder.gif",
+      L_TOPIC_FOLDER_ALT: "Watched topic",
+      FORUM_NAME: topic.forums?.forum_name ?? "",
+      U_VIEW_FORUM: `/viewforum/${topic.forum_id}`,
+      TOPIC_TITLE: topic.topic_title,
+      U_VIEW_TOPIC: `/viewtopic/${topic.id}`,
+      TOPIC_AUTHOR: topic.poster
+        ? markup(`<a href="/profile/${encodeURIComponent(topic.topic_poster)}">${escapeHtml(topic.poster.username)}</a>`)
+        : markup(""),
+      REPLIES: String(topic.topic_replies ?? 0),
+      VIEWS: String(topic.topic_views ?? 0),
+      LAST_POST_TIME: lastPost ? fmtDate(c, lastPost.post_time) : "",
+      LAST_POST_AUTHOR: lastPostAuthor
+        ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
+        : markup(""),
+      LAST_POST_IMG: lastPost
+        ? markup(`<a href="/viewtopic/${topic.id}#${lastPost.id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`)
+        : markup(""),
+      NEWEST_POST_IMG: "",
+      TOPIC_TYPE: "",
+      GOTO_PAGE: "",
+    });
   }
 
   return c.html(renderPage(tpl));

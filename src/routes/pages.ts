@@ -305,4 +305,98 @@ function describeLocation(path: string | null | undefined): string {
   return "Viewing the index";
 }
 
+
+/**
+ * Registration terms (agreement.tpl).
+ *
+ * phpBB2 showed this as an interstitial before the registration form and
+ * refused to proceed without agreement. Plank registers in one step, so this
+ * is a standalone page the registration form links to — same content, no
+ * extra click between someone and joining.
+ *
+ * The text is board configuration rather than a hardcoded string, so an owner
+ * can set their own terms without touching the code.
+ */
+pages.get("/agreement", async (c) => {
+  const user = c.get("user");
+  const db = getSupabaseAdmin();
+
+  const { data: rows } = await db
+    .from("config")
+    .select("config_name, config_value")
+    .in("config_name", ["board_agreement", "sitename"]);
+
+  const cfg: Record<string, string> = {};
+  for (const row of rows ?? []) cfg[row.config_name] = row.config_value;
+
+  const siteName = cfg.sitename || "Plank Forum";
+  const agreement =
+    cfg.board_agreement?.trim() ||
+    `By registering on ${siteName} you agree to keep it civil, to respect the ` +
+      `other people here, and to accept that the administrators may remove ` +
+      `content or accounts at their discretion. Your posts and profile are ` +
+      `visible to other members. You can request deletion of your account at ` +
+      `any time.`;
+
+  const tpl = createPageTemplate({
+    user: user
+      ? { id: user.id, username: user.username, unreadPms: user.unreadPms, userLevel: user.userLevel }
+      : null,
+    pageTitle: "Terms of use",
+  });
+
+  tpl.loadFile("body", "agreement.tpl");
+  tpl.assignVars({
+    U_INDEX: "/",
+    L_INDEX: "Index",
+    SITENAME: siteName,
+    // Plain string: an owner typing terms into the admin panel must not be
+    // able to inject markup, deliberately or otherwise.
+    AGREEMENT: agreement,
+    REGISTRATION: "Registration terms",
+    DO_NOT_AGREE: markup(
+      '<a href="/">I do not agree to these terms</a> &nbsp;|&nbsp; ' +
+      '<a href="/register">I agree — continue to registration</a>'
+    ),
+  });
+
+  return c.html(renderPage(tpl));
+});
+
+
+/**
+ * phpBB2's sort and filter controls (ISSUES.md).
+ *
+ * memberlist_body.tpl and viewforum_body.tpl each open a
+ * `<form method="post">` around a "sort by" / "display topics from previous N
+ * days" dropdown, and Plank registered no POST handler for either — so the Go
+ * buttons did nothing at all. The templates are unmodified phpBB2, so the
+ * method isn't ours to change; these handlers accept the POST and redirect to
+ * the equivalent GET, which is what those controls should have been doing.
+ */
+pages.post("/memberlist", async (c) => {
+  const body = await c.req.parseBody();
+  const params = new URLSearchParams();
+  const mode = (body.mode as string) ?? "";
+  const order = (body.order as string) ?? "";
+  if (mode) params.set("mode", mode);
+  if (order) params.set("order", order);
+  const qs = params.toString();
+  return c.redirect(qs ? `/memberlist?${qs}` : "/memberlist");
+});
+
+pages.post("/viewforum/:id", async (c) => {
+  const forumId = parseInt(c.req.param("id"), 10);
+  if (!forumId) return c.redirect("/");
+
+  const body = await c.req.parseBody();
+  const params = new URLSearchParams();
+  const days = parseInt((body.postdays as string) ?? "0", 10);
+  const sortKey = (body.postorder as string) ?? "";
+  if (days > 0) params.set("postdays", String(days));
+  if (sortKey) params.set("postorder", sortKey);
+  const qs = params.toString();
+  return c.redirect(qs ? `/viewforum/${forumId}?${qs}` : `/viewforum/${forumId}`);
+});
+
 export default pages;
