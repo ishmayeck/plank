@@ -1,7 +1,8 @@
 import type { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { authMiddleware } from "./auth/middleware.js";
-import { csrfTokenMiddleware } from "./lib/csrf.js";
+import { csrfTokenMiddleware, csrfFormInjectionMiddleware } from "./lib/csrf.js";
+import { securityHeadersMiddleware } from "./lib/headers.js";
 import authRoutes from "./routes/auth.js";
 import indexRoute from "./routes/index.js";
 import viewforumRoute from "./routes/viewforum.js";
@@ -27,6 +28,10 @@ import pagesRoute from "./routes/pages.js";
  * and src/edge.ts (Supabase Edge Functions).
  */
 export function registerApp(app: Hono): Hono {
+  // Baseline response headers. First so they land on every response,
+  // including the 403s the CSRF middlewares below can short-circuit with.
+  app.use("*", securityHeadersMiddleware);
+
   // CSRF defenses (in order: Origin/Referer check, then synchronizer-token check).
   // Tests can bypass with SKIP_CSRF=1 — production must never set this.
   // Checked at request time so a single test file can flip it.
@@ -38,6 +43,15 @@ export function registerApp(app: Hono): Hono {
   app.use("*", async (c, next) => {
     if (process.env.SKIP_CSRF === "1") return next();
     return csrfTokenMiddleware(c, next);
+  });
+  // Backstop: stamp the token into any POST form the templates didn't already
+  // carry one for. Original phpBB2 templates (and any drop-in theme, Chunk 23)
+  // have no S_HIDDEN_FIELDS slot inside several of their forms, and we render
+  // themes unmodified — so this is the only place the guarantee can be made
+  // to hold for every theme rather than every remembered call site.
+  app.use("*", async (c, next) => {
+    if (process.env.SKIP_CSRF === "1") return next();
+    return csrfFormInjectionMiddleware(c, next);
   });
 
   // Auth middleware on all routes

@@ -172,7 +172,22 @@ export function canDo(
   user: UserLike | null | undefined,
   acl: ForumAclMap
 ): boolean {
-  const required = (forum as any)[FORUM_AUTH_COLUMNS[action]] as number | null;
+  const column = FORUM_AUTH_COLUMNS[action];
+
+  // Fail LOUD, not open. A missing property means the caller's select()
+  // didn't fetch this column — not that the forum is unrestricted. Treating
+  // the two the same silently granted access to everyone (viewtopic selected
+  // only auth_view/auth_read, then asked about reply/edit/delete). A DB NULL
+  // is a different thing and still means "no restriction" below.
+  if (!(column in forum)) {
+    throw new Error(
+      `canDo("${action}") requires forums.${column}, which was not selected ` +
+        `for forum ${forum.id}. Add it to the select() — defaulting it would ` +
+        `silently grant access.`
+    );
+  }
+
+  const required = forum[column] as number | null;
   const level = required ?? AUTH_LEVEL.ALL;
 
   // ADMIN always wins.
@@ -231,4 +246,32 @@ export function filterViewable<T extends { id: number; auth_view?: number | null
   acl: ForumAclMap
 ): T[] {
   return forums.filter((f) => canDo("view", f, user, acl));
+}
+
+/**
+ * The ids of every forum this user may reach for `action` (always also
+ * requiring `view` — you must not find content in a forum you can't see).
+ *
+ * This is the primitive for queries that range across forums rather than
+ * starting from one: search, quick-searches, "new posts". Those can't gate on
+ * a single forum row, so they need the allowed set pushed into the query as a
+ * `forum_id IN (...)` predicate. Returning [] means "nothing is reachable" —
+ * callers must render an empty result, NOT skip the filter.
+ */
+export async function loadAccessibleForumIds(
+  supabase: SupabaseClient,
+  user: UserLike | null | undefined,
+  action: ForumAction = "read"
+): Promise<number[]> {
+  const column = FORUM_AUTH_COLUMNS[action];
+  // Dedupe: action "view" would otherwise select auth_view twice.
+  const columns = Array.from(new Set(["id", "auth_view", column])).join(", ");
+
+  const { data: forums } = await supabase.from("forums").select(columns);
+  if (!forums || forums.length === 0) return [];
+
+  const acl = await loadUserGroupAcls(supabase, user);
+  return (forums as unknown as ({ id: number } & Record<string, any>)[])
+    .filter((f) => canDo("view", f, user, acl) && canDo(action, f, user, acl))
+    .map((f) => f.id);
 }

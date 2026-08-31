@@ -241,7 +241,18 @@ auth.post("/register", async (c) => {
   });
 
   if (authError) {
-    return c.html(renderRegisterPage(c, `Registration failed: ${authError.message}`, { username, email }, avatarConfig));
+    // Deliberately generic. Supabase says "A user with this email address has
+    // already been registered", which turns this endpoint into an email
+    // oracle — undoing the care taken over the login message.
+    console.error("[register] createUser failed:", authError.message);
+    return c.html(
+      renderRegisterPage(
+        c,
+        "Registration could not be completed. Please check your details and try again.",
+        { username, email },
+        avatarConfig
+      )
+    );
   }
 
   // Create profile
@@ -253,7 +264,15 @@ auth.post("/register", async (c) => {
   if (profileError) {
     // Rollback: delete the auth user
     await adminSupabase.auth.admin.deleteUser(authData.user.id);
-    return c.html(renderRegisterPage(c, `Registration failed: ${profileError.message}`, { username, email }, avatarConfig));
+    console.error("[register] profile insert failed:", profileError.message);
+    return c.html(
+      renderRegisterPage(
+        c,
+        "Registration could not be completed. Please check your details and try again.",
+        { username, email },
+        avatarConfig
+      )
+    );
   }
 
   // Auto sign in

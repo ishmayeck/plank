@@ -26,6 +26,44 @@ const PM_SAVED_OUT = 5;
 
 const privmsg = new Hono();
 
+/**
+ * Fetch a private message ONLY if it belongs to this user, as either sender
+ * or recipient. Returns null otherwise, and callers must treat null as
+ * "not found" — never a distinguishable "forbidden", or the id space becomes
+ * an enumeration oracle for which messages exist.
+ *
+ * Every handler that reaches a PM by id goes through this. It exists because
+ * the ownership check was written correctly in one place (the read view) and
+ * then not repeated in two others: the reply/quote path pre-filled the compose
+ * form with any message's body, and the save path re-filed any two strangers'
+ * message into their savebox.
+ */
+async function loadOwnedPm(
+  adminDb: ReturnType<typeof getSupabaseAdmin>,
+  pmId: number,
+  userId: string,
+  select = "*"
+): Promise<any | null> {
+  if (!Number.isFinite(pmId) || pmId <= 0) return null;
+
+  const columns = select.includes("privmsgs_from_userid")
+    ? select
+    : `${select}, privmsgs_from_userid, privmsgs_to_userid`;
+
+  const { data: pm } = await adminDb
+    .from("privmsgs")
+    .select(columns)
+    .eq("id", pmId)
+    .maybeSingle();
+
+  if (!pm) return null;
+  const row = pm as any;
+  if (row.privmsgs_from_userid !== userId && row.privmsgs_to_userid !== userId) {
+    return null;
+  }
+  return row;
+}
+
 // ─── PM Listing (Inbox/Sentbox/Outbox/Savebox) ───────────────
 
 privmsg.get("/privmsg", async (c) => {
@@ -183,22 +221,18 @@ async function handleReadPM(c: any) {
 
   const adminDb = getSupabaseAdmin();
 
-  const { data: pm } = await adminDb
-    .from("privmsgs")
-    .select(
-      `*, privmsgs_text(*),
-       from_user:profiles!privmsgs_privmsgs_from_userid_fkey(id, username, user_avatar, user_sig),
-       to_user:profiles!privmsgs_privmsgs_to_userid_fkey(id, username)`
-    )
-    .eq("id", pmId)
-    .maybeSingle();
+  // Same 404 whether the message doesn't exist or isn't yours — a distinct
+  // 403 would let anyone map which PM ids exist.
+  const pm = await loadOwnedPm(
+    adminDb,
+    pmId,
+    user.id,
+    `*, privmsgs_text(*),
+     from_user:profiles!privmsgs_privmsgs_from_userid_fkey(id, username, user_avatar, user_sig),
+     to_user:profiles!privmsgs_privmsgs_to_userid_fkey(id, username)`
+  );
 
   if (!pm) return c.text("Message not found", 404);
-
-  // Check permission
-  if (pm.privmsgs_from_userid !== user.id && pm.privmsgs_to_userid !== user.id) {
-    return c.text("Forbidden", 403);
-  }
 
   // Mark as read if unread
   if (
@@ -320,13 +354,14 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
   const isQuote = c.req.query("quote") === "1";
   if (replyPmId && !overrides) {
     const adminDb = getSupabaseAdmin();
-    const { data: pm } = await adminDb
-      .from("privmsgs")
-      .select(
-        "*, privmsgs_text(*), from_user:profiles!privmsgs_privmsgs_from_userid_fkey(username)"
-      )
-      .eq("id", parseInt(replyPmId, 10))
-      .maybeSingle();
+    // Ownership-checked: quoting used to pre-fill this form with the body of
+    // ANY message by id, which made every PM on the board readable.
+    const pm = await loadOwnedPm(
+      adminDb,
+      parseInt(replyPmId, 10),
+      user.id,
+      "*, privmsgs_text(*), from_user:profiles!privmsgs_privmsgs_from_userid_fkey(username)"
+    );
 
     if (pm) {
       recipientUsername = pm.from_user?.username ?? "";
@@ -514,14 +549,16 @@ privmsg.post("/privmsg", async (c) => {
   if (body.delete) {
     const pmId = body.pm_id as string;
     if (pmId) {
-      // Single PM delete from read view
-      const { data: pm } = await adminDb
-        .from("privmsgs")
-        .select("privmsgs_from_userid, privmsgs_to_userid")
-        .eq("id", parseInt(pmId, 10))
-        .maybeSingle();
-
-      if (pm && (pm.privmsgs_from_userid === user.id || pm.privmsgs_to_userid === user.id)) {
+      // Single PM delete from read view. This branch already checked
+      // ownership; routed through the shared helper so all four PM-by-id
+      // paths use one implementation.
+      const pm = await loadOwnedPm(
+        adminDb,
+        parseInt(pmId, 10),
+        user.id,
+        "privmsgs_from_userid, privmsgs_to_userid"
+      );
+      if (pm) {
         await adminDb.from("privmsgs").delete().eq("id", parseInt(pmId, 10));
       }
     }
@@ -533,11 +570,15 @@ privmsg.post("/privmsg", async (c) => {
   if (body.save) {
     const pmId = body.pm_id as string;
     if (pmId) {
-      const { data: pm } = await adminDb
-        .from("privmsgs")
-        .select("privmsgs_from_userid, privmsgs_to_userid")
-        .eq("id", parseInt(pmId, 10))
-        .maybeSingle();
+      // Ownership-checked, matching the delete branch above. Without it this
+      // re-filed any two strangers' message, yanking it out of the victim's
+      // inbox listing.
+      const pm = await loadOwnedPm(
+        adminDb,
+        parseInt(pmId, 10),
+        user.id,
+        "privmsgs_from_userid, privmsgs_to_userid"
+      );
 
       if (pm) {
         const newType =

@@ -4,8 +4,9 @@ import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, render
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getSupabaseAdmin } from "../db/client.js";
-import { getAvatarConfig, type AvatarConfig } from "../lib/avatar.js";
+import { getAvatarConfig, sniffImageFormat, type AvatarConfig } from "../lib/avatar.js";
 import { escapeHtml } from "../lib/escape.js";
+import { safeExternalUrl, normalizeWebsiteInput } from "../lib/url.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
 import { loginRedirect } from "./auth.js";
@@ -67,12 +68,26 @@ profile.get("/profile/:id", async (c) => {
 
   tpl.loadFile("body", "profile_view_body.tpl");
 
-  const avatarImg = profileData.user_avatar
-    ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="" />`)
+  // Avatar URLs are server-generated Storage URLs today, so this is a no-op —
+  // but the admin panel exposes an allow_avatar_remote setting, and the day
+  // remote avatars are implemented this is what keeps a user-supplied scheme
+  // out of the attribute.
+  const avatarUrlSafe = safeExternalUrl(profileData.user_avatar);
+  const avatarImg = avatarUrlSafe
+    ? markup(`<img src="${escapeHtml(avatarUrlSafe)}" alt="" />`)
     : markup("");
 
-  const safeWebsite = profileData.user_website
-    ? markup(`<a href="${escapeHtml(profileData.user_website)}" target="_blank">${escapeHtml(profileData.user_website)}</a>`)
+  // escapeHtml alone is not enough for an href: it stops an attacker breaking
+  // out of the attribute, but a `javascript:` scheme needs none of the
+  // characters it escapes. Unlinkable values render as inert text so legacy
+  // rows written before validation existed can't fire either.
+  const websiteUrl = safeExternalUrl(profileData.user_website);
+  const safeWebsite = websiteUrl
+    ? markup(
+        `<a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(websiteUrl)}</a>`
+      )
+    : profileData.user_website
+    ? markup(escapeHtml(profileData.user_website))
     : markup("");
 
   tpl.assignVars({
@@ -182,12 +197,22 @@ profile.post("/profile", async (c) => {
       // in production), and image-size v2's canonical input is Uint8Array
       // anyway. Keep route code free of Node-only globals.
       const buf = new Uint8Array(await avatarFile.arrayBuffer());
-      let dims: { width?: number; height?: number };
-      try {
-        dims = imageSize(buf);
-      } catch {
-        avatarError = "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
-        dims = {};
+      let dims: { width?: number; height?: number } = {};
+
+      // Verify the magic number BEFORE image-size touches the bytes. The
+      // declared content-type above is client-supplied; image-size dispatches
+      // on the real bytes and has unfixed hang bugs in parsers we never want
+      // to reach (ICNS/JXL/HEIF).
+      if (!sniffImageFormat(buf)) {
+        avatarError =
+          "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
+      } else {
+        try {
+          dims = imageSize(buf);
+        } catch {
+          avatarError = "The image file is corrupted or not a recognizable JPEG/PNG/GIF.";
+          dims = {};
+        }
       }
       if (!avatarError) {
         const w = dims.width ?? 0;
@@ -242,10 +267,33 @@ profile.post("/profile", async (c) => {
     }
   }
 
+  // Reject unsafe website schemes with a real message rather than silently
+  // dropping the value, so the user knows why their link didn't save.
+  const normalizedWebsite = normalizeWebsiteInput(body.website as string);
+  if (normalizedWebsite === null) {
+    const { data: profileData } = await adminDb
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+    return c.html(
+      renderProfileEditForm({
+        c,
+        user,
+        profileData: profileData!,
+        error:
+          "Your website address must be a normal web link (http:// or https://).",
+        avatarConfig,
+      })
+    );
+  }
+
   // Build update object
   const updates: Record<string, any> = {
     user_from: (body.location as string) ?? "",
-    user_website: (body.website as string) ?? "",
+    // Normalized on write too, so the stored value is already safe and a
+    // bare "example.com" still becomes a working link.
+    user_website: normalizedWebsite,
     user_occ: (body.occupation as string) ?? "",
     user_interests: (body.interests as string) ?? "",
     user_sig: (body.signature as string) ?? "",
@@ -264,6 +312,36 @@ profile.post("/profile", async (c) => {
   // Handle password change
   const newPassword = body.new_password as string;
   if (newPassword && newPassword.trim()) {
+    // Re-authenticate before changing the password. The form has always
+    // rendered a "Current Password" field (L_CURRENT_PASSWORD) but the handler
+    // never read it, so anyone with a borrowed or stolen session could set a
+    // new password and convert temporary access into permanent ownership of
+    // the account — without ever knowing the old one.
+    const currentPassword = (body.cur_password as string) ?? "";
+    // Per-request anon client, never the service-role singleton: that one is
+    // shared process-wide and signInWithPassword mutates client session state.
+    const authClient = c.get("supabase");
+    const { error: reauthError } = await authClient.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (reauthError) {
+      const { data: profileData } = await adminDb
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+      return c.html(
+        renderProfileEditForm({
+          c,
+          user,
+          profileData: profileData!,
+          error: "You must enter your current password to change it.",
+          avatarConfig,
+        })
+      );
+    }
+
     const confirmPassword = body.password_confirm as string;
     if (newPassword !== confirmPassword) {
       // Re-render with error
@@ -422,8 +500,11 @@ profile.get("/memberlist", async (c) => {
           ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(member.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`)
           : markup(""),
         EMAIL_IMG: member.user_viewemail ? "[email]" : "",
-        WWW_IMG: member.user_website
-          ? markup(`<a href="${escapeHtml(member.user_website)}" target="_blank"><img src="templates/Solaris/images/icon_www.gif" alt="Website" border="0" /></a>`)
+        // Memberlist is visible to every visitor, so an unsafe scheme here
+        // reached the widest audience of any render site. No link at all
+        // rather than a link that can't be trusted.
+        WWW_IMG: safeExternalUrl(member.user_website)
+          ? markup(`<a href="${escapeHtml(safeExternalUrl(member.user_website)!)}" target="_blank" rel="noopener noreferrer"><img src="templates/Solaris/images/icon_www.gif" alt="Website" border="0" /></a>`)
           : markup(""),
       });
       rowIndex++;
@@ -585,8 +666,8 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     L_AVATAR_EXPLAIN:
       `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`,
     L_CURRENT_IMAGE: "Current Image",
-    AVATAR: profileData.user_avatar
-      ? markup(`<img src="${escapeHtml(profileData.user_avatar)}" alt="Avatar" />`)
+    AVATAR: safeExternalUrl(profileData.user_avatar)
+      ? markup(`<img src="${escapeHtml(safeExternalUrl(profileData.user_avatar)!)}" alt="Avatar" />`)
       : "No avatar",
     L_DELETE_AVATAR: "Delete Image",
     L_UPLOAD_AVATAR_FILE: "Upload Avatar from your machine",

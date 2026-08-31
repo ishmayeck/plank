@@ -5,7 +5,7 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
-import { formHiddenFields } from "../lib/csrf.js";
+import { formHiddenFields, validateQueryCsrf } from "../lib/csrf.js";
 import { loadUserGroupAcls, canMod, type ForumAclMap } from "../lib/permissions.js";
 
 const modcp = new Hono();
@@ -65,6 +65,9 @@ modcp.get("/modcp", async (c) => {
     }
 
     if (mode === "lock") {
+      // Mutating on GET, so the token middleware never sees it — validate the
+      // one carried in the link's query string.
+      if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
       const adminDb = getSupabaseAdmin();
       await adminDb.from("topics").update({ topic_status: 1 }).eq("id", topicId).eq("forum_id", forumId);
       const msg = `The selected topics have been locked.<br /><br />`
@@ -74,6 +77,7 @@ modcp.get("/modcp", async (c) => {
     }
 
     if (mode === "unlock") {
+      if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
       const adminDb = getSupabaseAdmin();
       await adminDb.from("topics").update({ topic_status: 0 }).eq("id", topicId).eq("forum_id", forumId);
       const msg = `The selected topics have been unlocked.<br /><br />`
@@ -164,6 +168,37 @@ modcp.get("/modcp", async (c) => {
   return c.html(renderPage(tpl));
 });
 
+/**
+ * Verify the user moderates the forum each target topic ACTUALLY lives in.
+ *
+ * Authority must come from the target row, never from a form field. The POST
+ * handler authorized against `body.f` and then acted on `topic_id_list[]`
+ * with no forum predicate, so a moderator of one forum could lock or delete
+ * any topic on the board — and, combined with an unchecked move destination,
+ * relocate a topic out of a private forum into a public one and read it.
+ *
+ * All-or-nothing: if any target is out of bounds the whole request is
+ * refused, rather than silently applying to the subset that happens to pass.
+ */
+async function canModAllTopics(
+  adminDb: ReturnType<typeof getSupabaseAdmin>,
+  topicIds: number[],
+  user: any,
+  acls: ForumAclMap
+): Promise<boolean> {
+  const unique = [...new Set(topicIds)].filter((id) => Number.isFinite(id) && id > 0);
+  if (unique.length === 0) return true;
+
+  const { data: rows } = await adminDb
+    .from("topics")
+    .select("id, forum_id")
+    .in("id", unique);
+
+  // Every requested topic must exist and sit in a forum this user moderates.
+  if (!rows || rows.length !== unique.length) return false;
+  return rows.every((r: any) => canMod(r.forum_id, user, acls));
+}
+
 // ─── ModCP Actions (POST) ─────────────────────────────────────
 
 modcp.post("/modcp", async (c) => {
@@ -193,6 +228,13 @@ modcp.post("/modcp", async (c) => {
         topicIds.push(parseInt(val as string, 10));
       }
     }
+  }
+
+  // The `f` gate above only proves the user moderates SOME forum. Every
+  // action below acts on topic ids from the request body, so authority has
+  // to be re-derived from those rows.
+  if (!(await canModAllTopics(getSupabaseAdmin(), topicIds, user, userAcls))) {
+    return c.html(forbiddenPage(user), 403);
   }
 
   // Handle mode-based confirm/cancel (from viewtopic buttons)
@@ -373,6 +415,17 @@ async function handleMoveConfirm(
   const leaveShadow = !!body.move_leave_shadow;
   const adminDb = getSupabaseAdmin();
 
+  // The DESTINATION needs authorization too, not just the source. Without
+  // this, moving is a read primitive: relocate a topic out of a forum you
+  // moderate into a public one (or bury a public topic somewhere hidden).
+  const moveAcls = await loadUserGroupAcls(adminDb, user);
+  if (
+    !canMod(newForumId, user, moveAcls) ||
+    !(await canModAllTopics(adminDb, topicIds, user, moveAcls))
+  ) {
+    return c.html(forbiddenPage(user), 403);
+  }
+
   for (const topicId of topicIds) {
     if (leaveShadow) {
       // Get original topic info for shadow (copy all display fields, matching phpBB2)
@@ -545,6 +598,18 @@ async function handleSplit(c: any, user: any, body: Record<string, any>) {
     .maybeSingle();
 
   if (!originalTopic) return c.text("Topic not found", 404);
+
+  // Split moves posts between forums, so it needs the same both-ends check
+  // as move: authority over the topic's real forum AND over the destination.
+  // The GET that renders the split form checks the source; this POST checked
+  // neither.
+  const splitAcls = await loadUserGroupAcls(adminDb, user);
+  if (
+    !canMod(originalTopic.forum_id, user, splitAcls) ||
+    !canMod(newForumId, user, splitAcls)
+  ) {
+    return c.html(forbiddenPage(user), 403);
+  }
 
   // Determine which posts to split
   let postIdsToMove: number[] = [];

@@ -41,6 +41,19 @@ let globalAdminRefresh: string;
 
 let testCategoryId: number;
 let modForumTopicId: number;         // topic in modForumId, posted by regular user
+let privateTopicId: number;          // topic inside privateForumId
+let privatePostId: number;
+
+// Distinctive markers. If either string appears in a response for a user who
+// isn't in privGroup, content from the private forum has escaped.
+//
+// The term we SEARCH for is deliberately a third string: the results page
+// echoes the query back ("Search found 0 matches for: ..."), so searching for
+// a marker would make every assertion trivially fail on the echo rather than
+// on a real leak.
+const PRIVATE_TOPIC_TITLE = "PermsPrivateTopicMarkerXYZ";
+const PRIVATE_POST_BODY = "PermsPrivateBodyMarkerXYZ";
+const PRIVATE_SEARCH_TERM = "zebrafishquux";
 
 async function createAndLogin(
   username: string,
@@ -199,6 +212,34 @@ beforeAll(async () => {
     forum_id: modForumId,
     poster_id: regularUserId,
   });
+
+  // A topic + post inside the PRIVATE forum, with distinctive strings. Any
+  // route that surfaces either of these to a non-member is leaking.
+  const { data: privTopic } = await adminDb
+    .from("topics")
+    .insert({
+      forum_id: privateForumId,
+      topic_title: PRIVATE_TOPIC_TITLE,
+      topic_poster: groupMemberUserId,
+    })
+    .select()
+    .single();
+  privateTopicId = privTopic!.id;
+  const { data: privPost } = await adminDb
+    .from("posts")
+    .insert({
+      topic_id: privateTopicId,
+      forum_id: privateForumId,
+      poster_id: groupMemberUserId,
+    })
+    .select()
+    .single();
+  privatePostId = privPost!.id;
+  await adminDb.from("posts_text").insert({
+    post_id: privatePostId,
+    post_subject: PRIVATE_TOPIC_TITLE,
+    post_text: `${PRIVATE_POST_BODY} ${PRIVATE_SEARCH_TERM}`,
+  });
 });
 
 afterAll(async () => {
@@ -288,6 +329,266 @@ describe("Per-forum ACLs: auth_post", () => {
       headers: cookies(globalAdminAccess, globalAdminRefresh),
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe("Search respects per-forum ACLs", () => {
+  // Search ranges across forums rather than starting from one, so it can't
+  // use the single-row gate the other routes use. Every one of its query
+  // paths needs the readable-forum filter, and each is tested separately
+  // because they are four independent queries that each forgot it.
+
+  it("keyword search over post bodies hides private content from a guest", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=posts`
+    );
+    const html = await res.text();
+    expect(html).not.toContain(PRIVATE_POST_BODY);
+    expect(html).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("keyword search over post bodies hides private content from a non-member", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=posts`,
+      { headers: cookies(regularAccess, regularRefresh) }
+    );
+    const html = await res.text();
+    expect(html).not.toContain(PRIVATE_POST_BODY);
+  });
+
+  it("still finds private content for a member of the forum's group", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=posts`,
+      { headers: cookies(groupMemberAccess, groupMemberRefresh) }
+    );
+    const html = await res.text();
+    expect(html).toContain(PRIVATE_POST_BODY);
+  });
+
+  it("topic search hides private topic titles from a guest", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=topics`
+    );
+    expect(await res.text()).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("topic search still returns private topics to a member", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&show_results=topics`,
+      { headers: cookies(groupMemberAccess, groupMemberRefresh) }
+    );
+    expect(await res.text()).toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("explicitly targeting the private forum id returns nothing for a non-member", async () => {
+    const res = await app.request(
+      `/search?search_keywords=${PRIVATE_SEARCH_TERM}&forum_id=${privateForumId}&show_results=posts`,
+      { headers: cookies(regularAccess, regularRefresh) }
+    );
+    expect(await res.text()).not.toContain(PRIVATE_POST_BODY);
+  });
+
+  it("the unanswered quick search hides private topics from a guest", async () => {
+    const res = await app.request("/search?mode=unanswered");
+    expect(await res.text()).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("the new-posts quick search hides private topics from a non-member", async () => {
+    const res = await app.request("/search?mode=newposts", {
+      headers: cookies(regularAccess, regularRefresh),
+    });
+    expect(await res.text()).not.toContain(PRIVATE_TOPIC_TITLE);
+  });
+
+  it("the search form's forum dropdown omits forums the viewer cannot read", async () => {
+    const res = await app.request("/search", {
+      headers: cookies(regularAccess, regularRefresh),
+    });
+    const html = await res.text();
+    expect(html).not.toContain("Perms Private");
+    expect(html).toContain("Perms ModForum");
+  });
+});
+
+describe("Topic review (iframe helper) respects per-forum ACLs", () => {
+  it("returns 404 for a guest on a private topic", async () => {
+    const res = await app.request(`/posting_topic_review?t=${privateTopicId}`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain(PRIVATE_POST_BODY);
+  });
+
+  it("returns 404 for a logged-in non-member", async () => {
+    const res = await app.request(`/posting_topic_review?t=${privateTopicId}`, {
+      headers: cookies(regularAccess, regularRefresh),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("renders for a member of the forum's group", async () => {
+    const res = await app.request(`/posting_topic_review?t=${privateTopicId}`, {
+      headers: cookies(groupMemberAccess, groupMemberRefresh),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("renders for a topic in a public forum", async () => {
+    const res = await app.request(`/posting_topic_review?t=${modForumTopicId}`);
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("ModCP actions authorize the TARGET, not the submitted forum id", () => {
+  // The POST handler gated on body.f — which only proves the user moderates
+  // *some* forum — and then acted on topic ids from the body with no forum
+  // predicate. Each action is tested separately because they were four
+  // independent statements that each skipped the check.
+
+  async function modcpPost(
+    fields: Record<string, string>,
+    access: string,
+    refresh: string
+  ) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    return app.request("/modcp", {
+      method: "POST",
+      body: form,
+      headers: cookies(access, refresh),
+    });
+  }
+
+  it("a per-forum mod cannot delete a topic in a forum they do not moderate", async () => {
+    await modcpPost(
+      { f: String(modForumId), delete: "1", "topic_id_list[]": String(privateTopicId) },
+      perForumModAccess,
+      perForumModRefresh
+    );
+    const { data } = await adminDb
+      .from("topics")
+      .select("id")
+      .eq("id", privateTopicId)
+      .maybeSingle();
+    expect(data).not.toBeNull();
+  });
+
+  it("a per-forum mod cannot lock a topic in a forum they do not moderate", async () => {
+    await modcpPost(
+      { f: String(modForumId), lock: "1", "topic_id_list[]": String(privateTopicId) },
+      perForumModAccess,
+      perForumModRefresh
+    );
+    const { data } = await adminDb
+      .from("topics")
+      .select("topic_status")
+      .eq("id", privateTopicId)
+      .maybeSingle();
+    expect(data!.topic_status).toBe(0);
+  });
+
+  it("a per-forum mod cannot move a private topic into a forum they moderate", async () => {
+    // This was the disclosure primitive: relocate content out of a forum you
+    // cannot even view, then read it at /viewtopic.
+    await modcpPost(
+      {
+        f: String(modForumId),
+        mode: "move",
+        confirm: "1",
+        new_forum_id: String(modForumId),
+        "topic_id_list[]": String(privateTopicId),
+      },
+      perForumModAccess,
+      perForumModRefresh
+    );
+    const { data } = await adminDb
+      .from("topics")
+      .select("forum_id")
+      .eq("id", privateTopicId)
+      .maybeSingle();
+    expect(data!.forum_id).toBe(privateForumId);
+  });
+
+  it("a per-forum mod cannot move their own topic into a forum they do not moderate", async () => {
+    const { data: topic } = await adminDb
+      .from("topics")
+      .insert({
+        forum_id: modForumId,
+        topic_title: "Mod forum topic to move out",
+        topic_poster: regularUserId,
+      })
+      .select()
+      .single();
+
+    await modcpPost(
+      {
+        f: String(modForumId),
+        mode: "move",
+        confirm: "1",
+        new_forum_id: String(privateForumId),
+        "topic_id_list[]": String(topic!.id),
+      },
+      perForumModAccess,
+      perForumModRefresh
+    );
+
+    const { data: after } = await adminDb
+      .from("topics")
+      .select("forum_id")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(after!.forum_id).toBe(modForumId);
+    await adminDb.from("topics").delete().eq("id", topic!.id);
+  });
+
+  it("a per-forum mod CAN still lock a topic in their own forum", async () => {
+    const { data: topic } = await adminDb
+      .from("topics")
+      .insert({
+        forum_id: modForumId,
+        topic_title: "Lockable topic",
+        topic_poster: regularUserId,
+      })
+      .select()
+      .single();
+
+    await modcpPost(
+      { f: String(modForumId), lock: "1", "topic_id_list[]": String(topic!.id) },
+      perForumModAccess,
+      perForumModRefresh
+    );
+
+    const { data: after } = await adminDb
+      .from("topics")
+      .select("topic_status")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(after!.topic_status).toBe(1);
+    await adminDb.from("topics").delete().eq("id", topic!.id);
+  });
+
+  it("a global admin can still act across forums", async () => {
+    const { data: topic } = await adminDb
+      .from("topics")
+      .insert({
+        forum_id: privateForumId,
+        topic_title: "Admin-lockable topic",
+        topic_poster: regularUserId,
+      })
+      .select()
+      .single();
+
+    await modcpPost(
+      { f: String(privateForumId), lock: "1", "topic_id_list[]": String(topic!.id) },
+      globalAdminAccess,
+      globalAdminRefresh
+    );
+
+    const { data: after } = await adminDb
+      .from("topics")
+      .select("topic_status")
+      .eq("id", topic!.id)
+      .maybeSingle();
+    expect(after!.topic_status).toBe(1);
+    await adminDb.from("topics").delete().eq("id", topic!.id);
   });
 });
 

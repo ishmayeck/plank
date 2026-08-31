@@ -118,6 +118,11 @@ posting.get("/posting", async (c) => {
     } else if (!canMod(f.id, user, userAcls)) {
       return c.text("You cannot edit another user's post.", 403);
     }
+    // Reply and quote both refuse a locked topic; edit did not, so "locked"
+    // stopped new posts while still allowing existing ones to be rewritten.
+    if ((post as any).topics?.topic_status === 1 && !canMod(f.id, user, userAcls)) {
+      return c.text("This topic is locked.", 403);
+    }
     forumRow = f;
     topicId = post.topic_id;
     forumId = (post as any).topics?.forum_id ?? 0;
@@ -191,6 +196,27 @@ posting.get("/posting_topic_review", async (c) => {
   if (!topicId) return c.text("Missing topic", 400);
 
   const supabase = getSupabaseAdmin();
+
+  // This renders the full text of the topic's last 15 posts, so it needs the
+  // same gate as viewtopic. It had none at all — being an iframe helper made
+  // it easy to overlook, but it is a plain GET anyone can request directly.
+  const user = c.get("user");
+  const { data: topic } = await supabase
+    .from("topics")
+    .select("id, forums(*)")
+    .eq("id", topicId)
+    .maybeSingle();
+  if (!topic) return c.text("Topic not found", 404);
+
+  const userAcls = await loadUserGroupAcls(supabase, user);
+  const reviewForum = (topic as any).forums;
+  if (!canDo("view", reviewForum, user, userAcls)) {
+    return c.text("Topic not found", 404);
+  }
+  if (!canDo("read", reviewForum, user, userAcls)) {
+    return c.text("You do not have permission to read this forum.", 403);
+  }
+
   const smilies = await loadSmilies(supabase);
   const reviewHtml = await renderTopicReview(topicId, smilies, false);
 
@@ -232,6 +258,21 @@ posting.post("/posting", async (c) => {
   const enableSmilies = body.disable_smilies !== "on";
   const enableBBCode = body.disable_bbcode !== "on";
   const requestedTopicType = parseInt(body.topictype as string, 10) || 0;
+
+  // Rate limit the modes that CREATE content, per user. Chunk 20 added this
+  // limiter and CLAUDE.md documented posting as covered, but the call was
+  // never actually wired up — only the import was. Edits and deletes are
+  // excluded: throttling those would strand someone mid-cleanup.
+  if (mode === "newtopic" || mode === "reply" || mode === "quote") {
+    const rl = await checkRateLimit(`posting:user:${user.id}`, RATE_LIMITS.posting);
+    if (!rl.allowed) {
+      c.header("Retry-After", String(rl.retryAfter));
+      return c.text(
+        `You are posting too quickly. Please try again in ${retryAfterText(rl.retryAfter)}.`,
+        429
+      );
+    }
+  }
 
   const supabaseForAcl = getSupabaseAdmin();
   const userAcls = await loadUserGroupAcls(supabaseForAcl, user);
@@ -519,12 +560,19 @@ posting.post("/posting", async (c) => {
       return c.text("This topic is locked.", 403);
     }
 
-    // Create reply post
+    // Create reply post.
+    //
+    // forum_id comes from the TOPIC we just authorized against, never from
+    // body.forum_id. The permission checks above use topic.forums, so taking
+    // the id from the request let a reply be stamped into a forum the poster
+    // has no access to — which then drove that forum's post count and
+    // last-post pointer from attacker-controlled content, and corrupted the
+    // forum_id filter search and resyncForum depend on.
     const { data: post, error: postErr } = await adminDb
       .from("posts")
       .insert({
         topic_id: topicId,
-        forum_id: forumId,
+        forum_id: topic.forum_id,
         poster_id: user.id,
         poster_ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null,
         enable_bbcode: enableBBCode,
@@ -573,7 +621,7 @@ posting.post("/posting", async (c) => {
     // Re-check permission against the current ACL state.
     const { data: existingPost } = await adminDb
       .from("posts")
-      .select("poster_id, topic_id, topics!posts_topic_id_fkey(forum_id, topic_first_post_id, forums(*))")
+      .select("poster_id, topic_id, topics!posts_topic_id_fkey(forum_id, topic_status, topic_first_post_id, forums(*))")
       .eq("id", postId)
       .maybeSingle();
 
@@ -587,6 +635,13 @@ posting.post("/posting", async (c) => {
       }
     } else if (!canMod(editForum.id, user, userAcls)) {
       return c.text("You cannot edit another user's post.", 403);
+    }
+    // Locked means locked at submit time too, not just on the form.
+    if (
+      (existingPost as any).topics?.topic_status === 1 &&
+      !canMod(editForum.id, user, userAcls)
+    ) {
+      return c.text("This topic is locked.", 403);
     }
 
     // Update post metadata

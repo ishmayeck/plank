@@ -6,6 +6,33 @@ Edge Functions** (Deno), keeping the stack Supabase-only. The same code is also
 viable on **Cloudflare Workers** and in a **Node/Docker** container. This doc is
 the runtime-portability audit (Chunk 22) and the remaining steps to ship.
 
+## ⚠️ Before the next deploy — required
+
+The Aug 2026 security remediation (Chunk 25, branch merged to master) landed
+two items that need an action on the next deploy. Do these or the hardening is
+incomplete:
+
+1. **Set `PLANK_PROXY_SECRET` on BOTH the Worker and the function.** Until it
+   exists on both sides, the raw function URL is reachable directly and per-IP
+   rate limiting is bypassable by spoofing `x-plank-client-ip`. Enforcement is
+   opt-in exactly so this deploy can't lock out the running site. **Worker
+   first, then the function** — the reverse order 404s every request in
+   between:
+   ```
+   wrangler secret put PLANK_PROXY_SECRET       # in infra/cloudflare/, first
+   supabase secrets set PLANK_PROXY_SECRET=...   # same value, second
+   ```
+   Full rationale under "Still open (owner decisions)" below.
+
+2. **`npm run build` (tsc) has 13 pre-existing type errors** — unrelated to the
+   security work, present on master before it. `build:edge` uses esbuild, which
+   doesn't typecheck, so these don't block the Edge deploy, but they mean `tsc`
+   is not a usable signal. Worth a cleanup pass before relying on it in CI.
+
+Nice-to-have, not blocking: tighten the CSP's `script-src` once the
+deployment's real asset origins are pinned (currently the CSP constrains
+framing/base/objects/forms only).
+
 ## Status
 
 **🚀 LIVE: https://sb-plank.ishmayeck.net** (the `sb-` prefix marks this as
@@ -88,6 +115,27 @@ by the shared-domain policy, fine for curl):
   relative-links + `<base href>` sweep (phpBB2-authentic, still viable if a
   pure-Supabase deployment is ever wanted); (c) Node entry in a container —
   works today, zero platform constraints, but abandons Edge compute.
+- **Set `PLANK_PROXY_SECRET` on both sides (do this before real traffic).**
+  The raw function URL is public (`verify_jwt = false`), so the app is
+  reachable directly, bypassing the Worker. Everything the Worker adds — the
+  real client IP, the public host — arrives as ordinary custom headers the
+  function trusts, which means a direct caller can supply their own
+  `x-plank-client-ip` and rotate it per request. That defeats the per-IP login
+  and registration rate limits entirely and forges the poster IPs shown in the
+  mod tools.
+
+  `src/edge.ts` now rejects any request without a matching
+  `x-plank-proxy-secret`, but **only once the secret exists** — it logs a
+  warning and behaves as before while unset, so deploying the code can't lock
+  out a running site. Two commands, same value:
+
+  ```
+  wrangler secret put PLANK_PROXY_SECRET       # in infra/cloudflare/
+  supabase secrets set PLANK_PROXY_SECRET=...  # same value
+  ```
+
+  Order matters: set it on the Worker first, then the function. Setting the
+  function first makes it 404 every request until the Worker catches up.
 - **Board bootstrap.** Hosted DB has schema but no content: create
   categories/forums via the admin panel after promoting your first user
   (`update profiles set user_level = 1 where username = '...'` in the SQL

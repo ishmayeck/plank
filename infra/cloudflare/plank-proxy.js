@@ -34,6 +34,22 @@ export default {
     const clientIp = request.headers.get("cf-connecting-ip");
     if (clientIp) headers.set("x-plank-client-ip", clientIp);
 
+    // Strip any inbound copies before setting our own, so a visitor can't
+    // pre-supply the tunnelled values and have them survive to the function.
+    // (Headers.set replaces, but be explicit about the intent.)
+    headers.delete("x-plank-proxy-secret");
+
+    // Prove to the function that this request came through the proxy. Without
+    // it the function is reachable directly at its …supabase.co URL and the
+    // tunnelled client IP above is attacker-controlled — which would make the
+    // per-IP rate limits bypassable by rotating a header value. Set the same
+    // value on both sides:
+    //   wrangler secret put PLANK_PROXY_SECRET
+    //   supabase secrets set PLANK_PROXY_SECRET=<same value>
+    if (env.PLANK_PROXY_SECRET) {
+      headers.set("x-plank-proxy-secret", env.PLANK_PROXY_SECRET);
+    }
+
     const res = await fetch(upstream, {
       method: request.method,
       headers,

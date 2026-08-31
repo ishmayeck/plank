@@ -92,12 +92,28 @@ describe("canDo — AUTH_LEVEL.ADMIN", () => {
     expect(canDo("post", f, admin, noAcl)).toBe(true));
 });
 
-describe("canDo — missing auth column defaults to ALL", () => {
-  // Some forums in older data might have NULL or undefined for a
-  // column. Behave as AUTH_ALL (most permissive) so we don't surprise
-  // existing installations.
-  it("guest can perform action with no level set", () =>
-    expect(canDo("post", { id: 1 } as any, guest, noAcl)).toBe(true));
+describe("canDo — NULL level means unrestricted, absent column is an error", () => {
+  // Two cases that used to be conflated, with very different meanings:
+  //
+  //  - The column is present and NULL. The forum genuinely has no level set
+  //    (older data, or an admin never touched it). AUTH_ALL is right.
+  //  - The column is absent from the object entirely. The CALLER's select()
+  //    didn't fetch it. Defaulting here silently granted access to everyone —
+  //    viewtopic selected only auth_view/auth_read, then asked about
+  //    reply/edit/delete and got `true` for every visitor. Fail loud instead.
+
+  it("treats a NULL level as ALL (guest allowed)", () =>
+    expect(canDo("post", { id: 1, auth_post: null } as any, guest, noAcl)).toBe(true));
+
+  it("throws when the auth column was never selected", () =>
+    expect(() => canDo("post", { id: 1 } as any, guest, noAcl)).toThrow(
+      /requires forums\.auth_post/
+    ));
+
+  it("names the offending action and forum so the caller is findable", () =>
+    expect(() => canDo("delete", { id: 42 } as any, admin, noAcl)).toThrow(
+      /canDo\("delete"\).*forum 42/s
+    ));
 });
 
 describe("canMod", () => {

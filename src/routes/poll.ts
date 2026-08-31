@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { renderMessagePage } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
+import { csrfField } from "../lib/csrf.js";
 import { markup, type MarkupString } from "../lib/markup.js";
 import { loginRedirect } from "./auth.js";
 import { loadUserGroupAcls, canDo } from "../lib/permissions.js";
@@ -106,7 +107,8 @@ poll.post("/poll", async (c) => {
 export async function renderPollForTopic(
   topicId: number,
   userId: string | null,
-  showViewResults: boolean
+  showViewResults: boolean,
+  csrfToken: string
 ): Promise<MarkupString> {
   const adminDb = getSupabaseAdmin();
 
@@ -154,14 +156,15 @@ export async function renderPollForTopic(
   if (showResults || showViewResults) {
     return markup(renderPollResults(pollQ, options, topicId));
   } else {
-    return markup(renderPollBallot(pollQ, options, topicId));
+    return markup(renderPollBallot(pollQ, options, topicId, csrfToken));
   }
 }
 
 function renderPollBallot(
   pollQ: any,
   options: any[],
-  topicId: number
+  topicId: number,
+  csrfToken: string
 ): string {
   let html = `<tr><td class="row2" colspan="2"><br clear="all" /><form method="POST" action="/poll"><table cellspacing="0" cellpadding="4" border="0" align="center">`;
   html += `<tr><td align="center"><span class="genmed"><b>${escapeHtml(pollQ.poll_text)}</b></span></td></tr>`;
@@ -175,7 +178,13 @@ function renderPollBallot(
   html += `</table></td></tr>`;
   html += `<tr><td align="center"><input type="submit" name="submit" value="Submit Vote" class="liteoption" /></td></tr>`;
   html += `<tr><td align="center"><span class="gensmall"><b><a href="/viewtopic/${topicId}?poll_results=1" class="gensmall">View Results</a></b></span></td></tr>`;
-  html += `</table><input type="hidden" name="topic_id" value="${topicId}" /></form></td></tr>`;
+  // The ballot posts to /poll, so it needs the synchroniser token like every
+  // other form. Without it the CSRF middleware rejected every vote — voting
+  // was simply broken, and the global SKIP_CSRF=1 test bypass meant no test
+  // could notice.
+  html += `</table><input type="hidden" name="topic_id" value="${topicId}" />`;
+  html += csrfField(csrfToken).html;
+  html += `</form></td></tr>`;
 
   return html;
 }

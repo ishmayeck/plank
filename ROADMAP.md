@@ -322,6 +322,47 @@ Deferred (decided against during planning): per-user permission overrides via si
 
 ---
 
+## Chunk 25: Security Review Remediation ✅ (2026-08-30)
+
+**Goal**: Fix the findings of the August 2026 full-app security review, and
+close the testing blind spots that let them ship.
+
+Findings and fixes are documented in the commit messages on
+`security/remediation-2026-08` (six commits). Headlines:
+
+- [x] **Unauthenticated content disclosure.** `/posting_topic_review` had no
+  authorization at all; `search.ts` imported nothing from `permissions.ts` and
+  four independent queries ranged over every forum. Both closed;
+  `search_topics` gained a REQUIRED `p_forum_ids` parameter so a future caller
+  that forgets it errors instead of searching the board.
+- [x] **IDOR.** PM reply/quote/save reached any message by id (the ownership
+  check existed in the read view and wasn't repeated); modcp took authority
+  from `body.f` while acting on arbitrary topic ids, and move/split never
+  checked the destination — a read primitive for private forums.
+- [x] **Stored XSS** via the profile website field (`javascript:` survives
+  `escapeHtml` untouched), plus markup injection through word censors and
+  attribute breakout through smilies.
+- [x] **Escape-by-default was defeatable.** The engine substituted variables in
+  two passes, the second scanning the first's output, so user content could
+  name and expand root variables. Now one pass.
+- [x] **Platform**: Secure cookies, security headers + a conservative CSP,
+  avatar bucket policies (any member could overwrite anyone's avatar),
+  reachable DoS via `image-size`, and a shared secret proving a request came
+  through the front proxy (without which per-IP rate limiting is bypassable at
+  the raw function URL).
+- [x] **The four Chunk 24 invariants are now enforced by enumeration** —
+  `test/security/invariants.test.ts`. It found four more token-less forms on
+  its first run, and a first-visit CSRF token bug, neither of which any
+  sampled test could see.
+
+Suite 385 → 471.
+
+**Still open (owner):** set `PLANK_PROXY_SECRET` on the Worker and the function
+(see DEPLOYMENT.md — order matters). Tighten `script-src` in the CSP once the
+deployment's real asset origins are pinned down.
+
+---
+
 ## Chunk 18: Remaining Polish
 
 **Goal**: Features deferred from earlier chunks.

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { escapeRegex } from "./escape.js";
+import { escapeRegex, escapeHtml } from "./escape.js";
 import { markup, isMarkup, type MarkupString } from "./markup.js";
 
 export interface WordCensor {
@@ -46,14 +46,40 @@ export function applyCensors(
   censors: WordCensor[]
 ): string | MarkupString {
   const wasMarkup = isMarkup(text);
-  let out = wasMarkup ? text.html : text;
-  for (const censor of censors) {
-    // Convert phpBB-style wildcards to regex
-    const pattern = escapeRegex(censor.word).replace(/\\\*/g, "\\S*");
-    const regex = new RegExp(`\\b${pattern}\\b`, "gi");
-    out = out.replace(regex, censor.replacement);
-  }
-  return wasMarkup ? markup(out) : out;
+  const source = wasMarkup ? text.html : text;
+
+  const censorSegment = (segment: string): string => {
+    let out = segment;
+    for (const censor of censors) {
+      // Convert phpBB-style wildcards to regex
+      const pattern = escapeRegex(censor.word).replace(/\\\*/g, "\\S*");
+      const regex = new RegExp(`\\b${pattern}\\b`, "gi");
+
+      // Escape when substituting into HTML: an admin typing `<b>` in a
+      // replacement should see literal text, not markup, and one typing a
+      // quote character must not be able to open an attribute.
+      const replacement = wasMarkup
+        ? escapeHtml(censor.replacement)
+        : censor.replacement;
+
+      // Replacer FUNCTION, not a replacement string. String.replace treats
+      // `$&`, `$\``, `$'` and `$1` in a replacement as patterns, so an admin
+      // replacement containing them could duplicate surrounding markup.
+      out = out.replace(regex, () => replacement);
+    }
+    return out;
+  };
+
+  if (!wasMarkup) return censorSegment(source);
+
+  // Censor only the text BETWEEN tags. Running over raw HTML let a censored
+  // word inside an attacker-chosen URL rewrite the attributes around it —
+  // e.g. a censor of `darn` → `" onmouseover="alert(1)` turned
+  // `[url=http://example.com/darn/x]` into a live event handler.
+  const censored = source.replace(/<[^>]*>|[^<]+/g, (chunk) =>
+    chunk.startsWith("<") ? chunk : censorSegment(chunk)
+  );
+  return markup(censored);
 }
 
 export function clearCensorCache(): void {

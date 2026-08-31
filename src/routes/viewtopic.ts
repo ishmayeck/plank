@@ -5,8 +5,10 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
 import { escapeHtml } from "../lib/escape.js";
+import { safeExternalUrl } from "../lib/url.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
+import { getCsrfToken, csrfQueryParam } from "../lib/csrf.js";
 import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 import { getSupabaseAdmin } from "../db/client.js";
 
@@ -25,7 +27,10 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const { data: topic, error: topicError } = await supabase
     .from("topics")
     .select(
-      "*, forums(id, forum_name, auth_view, auth_read)"
+      // forums(*) — not a column subset. This page asks canDo() about
+      // reply/post/edit/delete as well as view/read, and canDo now throws
+      // on a column the select didn't fetch rather than defaulting open.
+      "*, forums(*)"
     )
     .eq("id", topicId)
     .maybeSingle();
@@ -130,7 +135,8 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   const pollHtml = await renderPollForTopic(
     topicId,
     user?.id ?? null,
-    showViewResults
+    showViewResults,
+    getCsrfToken(c)
   );
 
   const isLocked = topic.topic_status === 1;
@@ -147,8 +153,8 @@ viewtopic.get("/viewtopic/:id", async (c) => {
   let topicAdminHtml = markup("");
   if (isTopicMod) {
     const lockImg = isLocked
-      ? `<a href="/modcp?mode=unlock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_unlock.gif" alt="Unlock Topic" title="Unlock Topic" border="0" /></a>`
-      : `<a href="/modcp?mode=lock&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_lock.gif" alt="Lock Topic" title="Lock Topic" border="0" /></a>`;
+      ? `<a href="/modcp?mode=unlock&t=${topicId}&f=${topic.forum_id}&${csrfQueryParam(c)}"><img src="templates/Solaris/images/topic_unlock.gif" alt="Unlock Topic" title="Unlock Topic" border="0" /></a>`
+      : `<a href="/modcp?mode=lock&t=${topicId}&f=${topic.forum_id}&${csrfQueryParam(c)}"><img src="templates/Solaris/images/topic_lock.gif" alt="Lock Topic" title="Lock Topic" border="0" /></a>`;
     topicAdminHtml = markup(
       `<a href="/modcp?mode=delete&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_delete.gif" alt="Delete Topic" title="Delete Topic" border="0" /></a>&nbsp;` +
       `<a href="/modcp?mode=move&t=${topicId}&f=${topic.forum_id}"><img src="templates/Solaris/images/topic_move.gif" alt="Move Topic" title="Move Topic" border="0" /></a>&nbsp;` +
@@ -243,8 +249,9 @@ viewtopic.get("/viewtopic/:id", async (c) => {
       const rank = getRank(poster?.user_posts ?? 0, poster?.user_rank ?? 0, ranks ?? []);
 
       // Avatar
-      const avatar = poster?.user_avatar
-        ? markup(`<br /><img src="${escapeHtml(poster.user_avatar)}" alt="" /><br />`)
+      const posterAvatar = safeExternalUrl(poster?.user_avatar);
+      const avatar = posterAvatar
+        ? markup(`<br /><img src="${escapeHtml(posterAvatar)}" alt="" /><br />`)
         : markup("");
 
       // Action buttons (based on permissions). The edit/delete icons

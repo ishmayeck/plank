@@ -6,8 +6,19 @@ import { generatePagination } from "../lib/pagination.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
+import { loadAccessibleForumIds } from "../lib/permissions.js";
 
 const RESULTS_PER_PAGE = 25;
+
+/**
+ * Search ranges across forums instead of starting from one, so it can't gate
+ * on a single forum row the way viewforum/viewtopic do. Every query in this
+ * file must therefore be constrained to this set. Guests get the forums that
+ * are world-readable; an empty set means no results, never "no filter".
+ */
+async function readableForumIds(c: any): Promise<number[]> {
+  return loadAccessibleForumIds(getSupabaseAdmin(), c.get("user"), "read");
+}
 
 const search = new Hono();
 
@@ -48,11 +59,16 @@ search.get("/search", async (c) => {
 
   tpl.loadFile("body", "search_body.tpl");
 
-  // Build forum options
-  const { data: forums } = await supabase
-    .from("forums")
-    .select("id, forum_name")
-    .order("forum_order");
+  // Build forum options — only forums this viewer can read, or the dropdown
+  // leaks the names and ids of private forums.
+  const allowedIds = await readableForumIds(c);
+  const { data: forums } = allowedIds.length
+    ? await supabase
+        .from("forums")
+        .select("id, forum_name")
+        .in("id", allowedIds)
+        .order("forum_order")
+    : { data: [] as { id: number; forum_name: string }[] };
 
   let forumOptions = '<option value="0">All Forums</option>';
   if (forums) {
@@ -209,8 +225,12 @@ async function handleTopicResults(
   // so user input like "foo & bar" or "(quoted)" doesn't blow up the
   // FTS parser. Author filter is applied via a follow-up topic query
   // when posterId resolved (the search_topics function doesn't take it).
+  // p_forum_ids is the ACL gate and is required by the function. A forumId
+  // the user can't read simply intersects to nothing — no special-casing.
+  const allowedIds = await readableForumIds(c);
   const { data: matches } = await adminDb.rpc("search_topics", {
     p_keywords: params.keywords ?? null,
+    p_forum_ids: allowedIds,
     p_forum_id: forumId || null,
     p_since: since,
     p_limit: RESULTS_PER_PAGE,
@@ -340,6 +360,10 @@ async function handlePostResults(
   const user = c.get("user");
   const supabase = getSupabaseAdmin();
 
+  // Restrict to readable forums BEFORE anything else. This query returns raw
+  // post bodies, so an unfiltered version hands private content to guests.
+  const allowedIds = await readableForumIds(c);
+
   let query = adminDb
     .from("posts")
     .select(
@@ -348,7 +372,8 @@ async function handlePostResults(
        poster:profiles!posts_poster_id_fkey(username),
        topics!posts_topic_id_fkey(id, topic_title, topic_replies, topic_views, forum_id, forums(forum_name))`,
       { count: "exact" }
-    );
+    )
+    .in("forum_id", allowedIds);
 
   if (params.keywords) {
     // websearch_to_tsquery accepts arbitrary user input (handles
@@ -481,6 +506,7 @@ async function handleNewPosts(c: any) {
       `*, forums(forum_name), poster:profiles!topics_topic_poster_fkey(username)`,
       { count: "exact" }
     )
+    .in("forum_id", await readableForumIds(c))
     .gte("topic_last_post_id", 0)
     .order("topic_last_post_id", { ascending: false })
     .range(offset, offset + RESULTS_PER_PAGE - 1);
@@ -578,6 +604,7 @@ async function handleUnanswered(c: any) {
       `*, forums(forum_name), poster:profiles!topics_topic_poster_fkey(username)`,
       { count: "exact" }
     )
+    .in("forum_id", await readableForumIds(c))
     .eq("topic_replies", 0)
     .order("id", { ascending: false })
     .range(offset, offset + RESULTS_PER_PAGE - 1);

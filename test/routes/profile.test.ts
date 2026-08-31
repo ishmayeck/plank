@@ -234,6 +234,7 @@ describe("User Profiles", () => {
 
     it("rejects mismatched passwords", async () => {
       const formData = new FormData();
+      formData.append("cur_password", "testpass123");
       formData.append("new_password", "newpass1");
       formData.append("password_confirm", "newpass2");
       formData.append("location", "Test City");
@@ -247,6 +248,52 @@ describe("User Profiles", () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Passwords do not match");
+    });
+
+    it("refuses a password change without the current password", async () => {
+      // A borrowed session should not be enough to take ownership of the
+      // account. The form has always rendered a "Current Password" field; the
+      // handler never read it.
+      const formData = new FormData();
+      formData.append("location", "Test City");
+      formData.append("new_password", "attacker-chosen");
+      formData.append("password_confirm", "attacker-chosen");
+
+      const res = await app.request("/profile", {
+        method: "POST",
+        body: formData,
+        headers: authHeaders(),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("current password");
+
+      // And the old password must still work.
+      const loginForm = new FormData();
+      loginForm.append("username", "ProfileTester");
+      loginForm.append("password", "testpass123");
+      const loginRes = await app.request("/login", {
+        method: "POST",
+        body: loginForm,
+      });
+      expect(loginRes.status).toBe(302);
+    });
+
+    it("refuses a password change with the WRONG current password", async () => {
+      const formData = new FormData();
+      formData.append("location", "Test City");
+      formData.append("cur_password", "not-the-password");
+      formData.append("new_password", "attacker-chosen");
+      formData.append("password_confirm", "attacker-chosen");
+
+      const res = await app.request("/profile", {
+        method: "POST",
+        body: formData,
+        headers: authHeaders(),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("current password");
     });
   });
 });
