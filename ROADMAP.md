@@ -772,8 +772,31 @@ Design — three layers: slot-classification, then structural, then pixel:
   fix loop forever.
 
 Critical path / main cost:
-- [ ] **Get phpBB2 actually installed** in the rig (config + schema load);
-  verify the docker-compose stack comes up and serves pages.
+- [~] **Get phpBB2 actually installed** in the rig. **Stack verified up
+  (2026-08-30); one blocker left, needs an owner decision.**
+  - ✅ `docker compose up -d` brings all three services up: Apache 2.4.25 /
+    PHP 5.6.40 on :8080, MySQL 5.7 on :3306, phpMyAdmin on :8081.
+  - ✅ `vendor/phpBB2/config.php` is already correct — points at host `mysql`,
+    db/user/pass `phpbb`, `PHPBB_INSTALLED` true.
+  - ✅ PHP↔MySQL connectivity works, and both the legacy `mysql` and `mysqli`
+    extensions load. Proven by the failure mode: phpBB gets far enough to run
+    `SELECT * FROM phpbb_config` and fails on the missing TABLE, not on
+    connecting.
+  - ❌ **The database is empty (0 tables) and the schema is not obtainable
+    locally.** `vendor/phpBB2/` has had its `install/` directory stripped —
+    499 files, no `.sql` anywhere — and the MacBook copy is byte-identical, so
+    there is no second source to pull from. `admin/admin_db_utilities.php` does
+    emit CREATE TABLE, but it introspects a *live* database (it's the backup
+    tool), so it is chicken-and-egg.
+  - **Needed**: `install/schemas/mysql_schema.sql` and `mysql_basic.sql` from
+    the phpBB 2.0.x distribution, loaded into the `phpbb` database. That is a
+    third-party download, so it wants an explicit go-ahead rather than being
+    fetched unilaterally. Once the files exist, install is one command:
+    `docker compose exec -T mysql mysql -uphpbb -pphpbb phpbb < mysql_schema.sql`
+    (then `mysql_basic.sql` for the seed rows).
+  - Do NOT hand-write the schema instead. 31 tables, and a schema that differs
+    subtly from real phpBB2 makes every parity diff meaningless — which is the
+    entire point of this chunk.
 - [ ] **Single fixture → dual seed.** One fixture populates BOTH MySQL (phpBB)
   and Postgres (Plank) with matching IDs/content. This is the bulk of the
   work; without identical data, diffs are meaningless.
