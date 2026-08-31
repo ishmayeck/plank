@@ -313,6 +313,42 @@ describe("the injected token is the real one, not just a matching string", () =>
   });
 });
 
+describe("link-triggered mutations require their query token", () => {
+  // These mutate on GET, which the token middleware treats as safe and never
+  // checks, so they validate the token carried in their own URL. Asserted
+  // here rather than in the feature suites because vitest.config sets
+  // SKIP_CSRF=1 globally — only this file runs the real middleware.
+  it("/markread refuses a request with no token", async () => {
+    const res = await app.request("/markread", {
+      headers: {
+        Origin: "http://localhost",
+        Cookie: `sb-access-token=${adminAccess}; sb-refresh-token=${adminRefresh}`,
+      },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("/admin/themes/action refuses a request with no token", async () => {
+    const res = await app.request("/admin/themes/action?mode=deactivate", {
+      headers: {
+        Origin: "http://localhost",
+        Cookie: `sb-access-token=${adminAccess}; sb-refresh-token=${adminRefresh}`,
+      },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("/admin/forum-action refuses a request with no token", async () => {
+    const res = await app.request("/admin/forum-action?mode=resync", {
+      headers: {
+        Origin: "http://localhost",
+        Cookie: `sb-access-token=${adminAccess}; sb-refresh-token=${adminRefresh}`,
+      },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("INVARIANT: user-controlled URLs go through the scheme allowlist", () => {
   // Static check. escapeHtml in an href is not sufficient — it stops
   // attribute breakout but not a `javascript:` scheme — so any href/src built

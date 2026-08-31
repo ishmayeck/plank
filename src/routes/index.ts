@@ -3,6 +3,8 @@ import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, formatUsernameLin
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { loadReadState, isForumUnread } from "../lib/readtracking.js";
+import { csrfQueryParam } from "../lib/csrf.js";
 import { loadUserGroupAcls, filterViewable } from "../lib/permissions.js";
 
 const index = new Hono();
@@ -150,7 +152,7 @@ index.get("/", async (c) => {
 
     // Links
     U_VIEWONLINE: "/viewonline",
-    U_MARK_READ: "/markread",
+    U_MARK_READ: user ? `/markread?${csrfQueryParam(c)}` : "/",
     S_TIMEZONE: timezoneNotice(c),
 
     // Login form (shown for logged-out users)
@@ -240,6 +242,9 @@ index.get("/", async (c) => {
 
   // Build category/forum blocks
   if (categories && forums) {
+    // One query for every forum on the page, not one per forum.
+    const readState = await loadReadState(supabase, user, { forumIds });
+
     for (const cat of categories) {
       tpl.assignBlockVars("catrow", {
         U_VIEWCAT: `/category/${cat.id}`,
@@ -248,6 +253,11 @@ index.get("/", async (c) => {
 
       const catForums = forums.filter((f: any) => f.cat_id === cat.id);
       for (const forum of catForums) {
+        const forumUnread = isForumUnread(
+          readState,
+          forum.id,
+          lastPostMap[forum.id]?.time
+        );
         let lastPostText = markup("No posts");
         if (lastPostMap[forum.id]) {
           const lp = lastPostMap[forum.id];
@@ -268,7 +278,10 @@ index.get("/", async (c) => {
           : "None";
 
         tpl.assignBlockVars("catrow.forumrow", {
-          FORUM_FOLDER_IMG: "templates/Solaris/images/folder.gif",
+          FORUM_FOLDER_IMG: forumUnread
+            ? "templates/Solaris/images/folder_new.gif"
+            : "templates/Solaris/images/folder.gif",
+          L_FORUM_FOLDER_ALT: forumUnread ? "New posts" : "No new posts",
           U_VIEWFORUM: `/viewforum/${forum.id}`,
           FORUM_NAME: forum.forum_name,
           FORUM_DESC: forum.forum_desc ?? "",

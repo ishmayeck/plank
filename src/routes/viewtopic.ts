@@ -6,6 +6,7 @@ import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
 import { escapeHtml } from "../lib/escape.js";
 import { safeExternalUrl } from "../lib/url.js";
+import { markTopicRead } from "../lib/readtracking.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
 import { getCsrfToken, csrfQueryParam } from "../lib/csrf.js";
@@ -129,6 +130,13 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     .order("topic_last_post_id", { ascending: true })
     .limit(1)
     .maybeSingle();
+
+  // Record that this user has now seen the topic. Awaited rather than
+  // fire-and-forget: it's a single upsert, and letting it race means the very
+  // next page load can still show the topic as unread.
+  if (user) {
+    await markTopicRead(supabase, user.id, topicId);
+  }
 
   // Render poll if topic has one
   const showViewResults = c.req.query("poll_results") === "1";

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
+import { markAllRead, markForumRead } from "../lib/readtracking.js";
+import { validateQueryCsrf } from "../lib/csrf.js";
 import { USER_LEVEL } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup, type MarkupString } from "../lib/markup.js";
@@ -248,9 +250,31 @@ pages.get("/viewonline", async (c) => {
 
 // ─── Mark Forums Read ─────────────────────────────────────────
 
+/**
+ * "Mark forums read" — the whole board, or one forum with ?f=N.
+ *
+ * A GET that mutates, because phpBB2 drives it from a plain link in the
+ * template and we render templates unmodified. It therefore carries the CSRF
+ * token in its query string, like the other link-triggered actions.
+ *
+ * Marking read is idempotent and affects only the caller's own rows, so the
+ * consequences of a forged one are nil — but it's gated anyway rather than
+ * leaving a mutating GET as the one exception to the rule.
+ */
 pages.get("/markread", async (c) => {
-  // phpBB2 style "mark forums read" — just redirect to index
-  // In a full implementation this would update a tracking table
+  const user = c.get("user");
+  if (!user) return c.redirect("/");
+  if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
+
+  const db = getSupabaseAdmin();
+  const forumId = parseInt(c.req.query("f") ?? "0", 10);
+
+  if (forumId > 0) {
+    await markForumRead(db, user.id, forumId);
+    return c.redirect(`/viewforum/${forumId}`);
+  }
+
+  await markAllRead(db, user.id);
   return c.redirect("/");
 });
 

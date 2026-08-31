@@ -3,6 +3,8 @@ import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJum
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { loadReadState, isTopicUnread } from "../lib/readtracking.js";
+import { csrfQueryParam } from "../lib/csrf.js";
 import { generatePagination, topicGotoPage } from "../lib/pagination.js";
 import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 
@@ -177,7 +179,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     MODERATORS: moderatorsHtml,
     LOGGED_IN_USER_LIST: markup(browsingStr),
     L_MARK_TOPICS_READ: "Mark all topics read",
-    U_MARK_READ: `/viewforum/${forumId}?mark=topics`,
+    U_MARK_READ: user ? `/markread?f=${forumId}&${csrfQueryParam(c)}` : `/viewforum/${forumId}`,
     L_DISPLAY_TOPICS: "Display topics from previous",
     L_NO_TOPICS: "There are no topics in this forum.",
     L_GO: "Go",
@@ -208,6 +210,12 @@ viewforum.get("/viewforum/:id", async (c) => {
     L_NO_NEW_POSTS_LOCKED: "No new posts [ Locked ]",
   });
 
+  // One batched query for the whole page. Asking per row would be 25 queries.
+  const readState = await loadReadState(supabase, user, {
+    topicIds: (topics ?? []).map((t: any) => t.id),
+    forumIds: [forumId],
+  });
+
   // Populate topic rows
   if (topics && topics.length > 0) {
     for (const topic of topics) {
@@ -223,9 +231,19 @@ viewforum.get("/viewforum/:id", async (c) => {
         ? markup(`<a href="/viewtopic/${topic.id}#${topic.topic_last_post_id}"><img src="templates/Solaris/images/icon_latest_reply.gif" alt="View latest post" title="View latest post" border="0" /></a>`)
         : markup("");
 
-      // Determine folder icon and topic type prefix
-      let folderImg = "templates/Solaris/images/folder.gif";
-      let folderAlt = "No new posts";
+      // Determine folder icon and topic type prefix. phpBB2 ships a
+      // separate "_new" image for each folder state, so unread is a
+      // different icon rather than a badge.
+      const unread = isTopicUnread(
+        readState,
+        topic.id,
+        topic.forum_id ?? forumId,
+        lastPost?.post_time
+      );
+      let folderImg = unread
+        ? "templates/Solaris/images/folder_new.gif"
+        : "templates/Solaris/images/folder.gif";
+      let folderAlt = unread ? "New posts" : "No new posts";
       let topicType = "";
       let topicLinkId = topic.id;
 
@@ -235,18 +253,25 @@ viewforum.get("/viewforum/:id", async (c) => {
         folderAlt = "Topic Moved";
         topicLinkId = topic.topic_moved_id ?? topic.id;
       } else {
+        const suffix = unread ? "_new" : "";
+        const newPrefix = unread ? "New posts" : "No new posts";
         if (topic.topic_status === 1) {
-          folderImg = "templates/Solaris/images/folder_lock.gif";
-          folderAlt = "Locked";
+          folderImg = `templates/Solaris/images/folder_lock${suffix}.gif`;
+          folderAlt = `${newPrefix} [ Locked ]`;
         } else if (topic.topic_type === 2) {
-          folderImg = "templates/Solaris/images/folder_announce.gif";
+          folderImg = `templates/Solaris/images/folder_announce${suffix}.gif`;
           folderAlt = "Announcement";
         } else if (topic.topic_type === 1) {
-          folderImg = "templates/Solaris/images/folder_sticky.gif";
+          folderImg = `templates/Solaris/images/folder_sticky${suffix}.gif`;
           folderAlt = "Sticky";
         } else if (topic.topic_replies >= 15) {
-          folderImg = "templates/Solaris/images/folder_hot.gif";
-          folderAlt = "Hot topic";
+          // phpBB2's naming is inconsistent here: every other unread icon is
+          // <name>_new.gif, but hot is folder_new_hot.gif. Verified against
+          // the shipped image set rather than assumed from the pattern.
+          folderImg = unread
+            ? "templates/Solaris/images/folder_new_hot.gif"
+            : "templates/Solaris/images/folder_hot.gif";
+          folderAlt = `${newPrefix} [ Hot ]`;
         }
 
         // Topic type prefix (matches phpBB2 lang strings)
@@ -262,7 +287,12 @@ viewforum.get("/viewforum/:id", async (c) => {
       tpl.assignBlockVars("topicrow", {
         TOPIC_FOLDER_IMG: folderImg,
         L_TOPIC_FOLDER_ALT: folderAlt,
-        NEWEST_POST_IMG: "",
+        NEWEST_POST_IMG: unread && lastPost
+          ? markup(
+              `<a href="/viewtopic/${topic.id}#${topic.topic_last_post_id}">` +
+              `<img src="templates/Solaris/images/icon_newest_reply.gif" alt="View newest post" title="View newest post" border="0" /></a>`
+            )
+          : markup(""),
         TOPIC_TYPE: markup(topicType),
         U_VIEW_TOPIC: `/viewtopic/${topicLinkId}`,
         TOPIC_TITLE: topic.topic_title,
