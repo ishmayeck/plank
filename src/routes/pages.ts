@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, ADMIN_COLOR, MOD_COLOR, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { USER_LEVEL } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
@@ -98,7 +98,7 @@ pages.get("/faq", async (c) => {
     L_INDEX: "Index",
     L_FAQ_TITLE: "Frequently Asked Questions",
     L_BACK_TO_TOP: "Back to top",
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -196,7 +196,7 @@ pages.get("/viewonline", async (c) => {
     L_LAST_UPDATE: "Last Updated",
     L_FORUM_LOCATION: "Forum Location",
     L_ONLINE_EXPLAIN: "This data is based on users active over the past five minutes",
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: jumpboxHtml,
     TOTAL_REGISTERED_USERS_ONLINE:
       `Registered Users Online: ${registered.length}` +
@@ -221,7 +221,7 @@ pages.get("/viewonline", async (c) => {
       ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
       USERNAME: styledUsername,
       U_USER_PROFILE: `/profile/${encodeURIComponent(profile?.id ?? "")}`,
-      LASTUPDATE: formatPhpBBDate(s.session_time),
+      LASTUPDATE: fmtDate(c, s.session_time),
       // Deliberately NOT the raw session_page. That column records the exact
       // path being viewed — /viewforum/<private id>, /privmsg?mode=read&p=N,
       // /admin/... — and this page is readable by anonymous visitors.
@@ -236,7 +236,7 @@ pages.get("/viewonline", async (c) => {
     tpl.assignBlockVars("guest_user_row", {
       ROW_CLASS: rowIndex % 2 === 0 ? "row1" : "row2",
       USERNAME: "Guest",
-      LASTUPDATE: formatPhpBBDate(s.session_time),
+      LASTUPDATE: fmtDate(c, s.session_time),
       FORUM_LOCATION: s.session_page ?? "Index",
       U_FORUM_LOCATION: "/",
     });

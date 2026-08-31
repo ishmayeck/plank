@@ -8,7 +8,7 @@ import {
   POSTING_COLOR_LABELS,
   POSTING_FONT_SIZE_LABELS,
 } from "../lib/labels.js";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { generatePagination } from "../lib/pagination.js";
@@ -174,7 +174,7 @@ privmsg.get("/privmsg", async (c) => {
     S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="folder" value="${escapeHtml(folder)}" />`),
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     BOX_SIZE_STATUS: "",
     INBOX_LIMIT_IMG_WIDTH: "0",
@@ -200,7 +200,7 @@ privmsg.get("/privmsg", async (c) => {
         U_READ: `/privmsg?mode=read&p=${msg.id}`,
         FROM: otherUser?.username ?? "Unknown",
         U_FROM_USER_PROFILE: `/profile/${otherUser?.id ?? ""}`,
-        DATE: formatPhpBBDate(msg.privmsgs_date),
+        DATE: fmtDate(c, msg.privmsgs_date),
         S_MARK_ID: String(msg.id),
       });
       rowIndex++;
@@ -285,7 +285,7 @@ async function handleReadPM(c: any) {
     L_TO: "To:",
     MESSAGE_TO: markup(`<a href="/profile/${encodeURIComponent(pm.to_user?.id ?? "")}">${escapeHtml(pm.to_user?.username ?? "Unknown")}</a>`),
     L_POSTED: "Posted:",
-    POST_DATE: formatPhpBBDate(pm.privmsgs_date),
+    POST_DATE: fmtDate(c, pm.privmsgs_date),
     L_SUBJECT: "Subject:",
     POST_SUBJECT: pm.privmsgs_subject,
     MESSAGE: messageHtml,
@@ -314,7 +314,7 @@ async function handleReadPM(c: any) {
     ICQ_IMG: "",
     ICQ_STATUS_IMG: "",
 
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -403,7 +403,7 @@ async function handleComposePM(c: any, overrides?: ComposeOverrides) {
     S_HIDDEN_FORM_FIELDS: formHiddenFields(c, '<input type="hidden" name="mode" value="post" />'),
     SUBJECT: subject,
     MESSAGE: message,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     TOPIC_REVIEW_BOX: "",
     POLLBOX: "",

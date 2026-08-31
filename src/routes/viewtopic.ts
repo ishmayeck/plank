@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
@@ -203,7 +203,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     // Pagination
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
 
     // Post display form
     S_POST_DAYS_ACTION: `/viewtopic/${topicId}`,
@@ -282,19 +282,19 @@ viewtopic.get("/viewtopic/:id", async (c) => {
           ? markup(`<img src="${escapeHtml(rank.image)}" alt="${escapeHtml(rank.title)}" /><br />`)
           : markup(""),
         POSTER_AVATAR: avatar,
-        POSTER_JOINED: `Joined: ${formatPhpBBDate(poster?.user_regdate ?? post.post_time, true)}`,
+        POSTER_JOINED: `Joined: ${fmtDateOnly(c, poster?.user_regdate ?? post.post_time)}`,
         POSTER_POSTS: `Posts: ${poster?.user_posts ?? 0}`,
         POSTER_FROM: poster?.user_from ? `Location: ${poster.user_from}` : "",
         U_POST_ID: String(post.id),
         U_MINI_POST: `/viewtopic/${topicId}#${post.id}`,
         MINI_POST_IMG: "templates/Solaris/images/icon_minipost.gif",
         L_MINI_POST_ALT: "Post",
-        POST_DATE: formatPhpBBDate(post.post_time),
+        POST_DATE: fmtDate(c, post.post_time),
         POST_SUBJECT: applyCensors(postText?.post_subject ?? "", censors),
         MESSAGE: messageHtml,
         SIGNATURE: signature,
         EDITED_MESSAGE: post.post_edit_count > 0
-          ? markup(`<br /><br />Last edited by ${escapeHtml(poster?.username ?? "Unknown")} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`)
+          ? markup(`<br /><br />Last edited by ${escapeHtml(poster?.username ?? "Unknown")} on ${fmtDate(c, post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`)
           : markup(""),
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,

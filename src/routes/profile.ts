@@ -1,12 +1,18 @@
 import { Hono } from "hono";
 import { imageSize } from "image-size";
-import { createPageTemplate, renderPage, formatPhpBBDate, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, renderErrorBox, renderMessagePage, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { getAvatarConfig, sniffImageFormat, type AvatarConfig } from "../lib/avatar.js";
 import { escapeHtml } from "../lib/escape.js";
 import { safeExternalUrl, normalizeWebsiteInput } from "../lib/url.js";
+import {
+  renderTimezoneOptions,
+  isValidTimeZone,
+  DATE_FORMAT_PRESETS,
+} from "../lib/timezones.js";
+import { DEFAULT_DATE_FORMAT, DEFAULT_TIMEZONE } from "../lib/datetime.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields } from "../lib/csrf.js";
 import { loginRedirect } from "./auth.js";
@@ -101,7 +107,7 @@ profile.get("/profile/:id", async (c) => {
     POSTER_RANK: rank.title,
 
     L_JOINED: "Joined",
-    JOINED: formatPhpBBDate(regDate, true),
+    JOINED: fmtDateOnly(c, regDate),
 
     L_TOTAL_POSTS: "Total posts",
     POSTS: String(profileData.user_posts ?? 0),
@@ -300,6 +306,12 @@ profile.post("/profile", async (c) => {
     user_viewemail: body.viewemail === "1",
     user_allow_viewonline: body.hideonline !== "1",
     user_attachsig: body.attachsig === "1",
+    // Validated, not trusted: an unusable zone would make every date on the
+    // board silently fall back to UTC for this user with no way to tell why.
+    user_timezone: isValidTimeZone((body.timezone as string) ?? "")
+      ? (body.timezone as string)
+      : DEFAULT_TIMEZONE,
+    user_dateformat: ((body.dateformat as string) ?? "").trim() || DEFAULT_DATE_FORMAT,
   };
 
   if (avatarUrl !== null || avatarDel) {
@@ -480,7 +492,7 @@ profile.get("/memberlist", async (c) => {
     L_WEBSITE: "Website",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -494,7 +506,7 @@ profile.get("/memberlist", async (c) => {
         USERNAME: member.username,
         U_VIEWPROFILE: `/profile/${encodeURIComponent(member.id)}`,
         FROM: member.user_from ?? "",
-        JOINED: formatPhpBBDate(member.user_regdate, true),
+        JOINED: fmtDateOnly(c, member.user_regdate),
         POSTS: String(member.user_posts ?? 0),
         PM_IMG: user
           ? markup(`<a href="/privmsg?mode=post&u=${encodeURIComponent(member.id)}"><img src="templates/Solaris/images/lang_english/icon_pm.gif" alt="PM" border="0" /></a>`)
@@ -656,10 +668,21 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     L_BOARD_STYLE: "Board Style",
     STYLE_SELECT: "Solaris",
     L_TIMEZONE: "Timezone",
-    TIMEZONE_SELECT: markup(`<select name="timezone"><option value="UTC" selected>UTC</option></select>`),
+    TIMEZONE_SELECT: markup(
+      `<select name="timezone">${renderTimezoneOptions(profileData.user_timezone).html}</select>`
+    ),
     L_DATE_FORMAT: "Date format",
-    L_DATE_FORMAT_EXPLAIN: markup('The syntax used is identical to the PHP <a href="https://www.php.net/date" target="_other">date()</a> function.'),
-    DATE_FORMAT: profileData.user_dateformat ?? "DD Mon YYYY HH24:MI",
+    // Show worked examples rather than only linking the PHP manual: the field
+    // is free text and "D M d, Y g:i a" is not self-explanatory.
+    L_DATE_FORMAT_EXPLAIN: markup(
+      'Uses <a href="https://www.php.net/date" target="_other">PHP date()</a> syntax. ' +
+        "Examples: " +
+        DATE_FORMAT_PRESETS.map(
+          (p) => `<code>${escapeHtml(p.format)}</code> &rarr; ${escapeHtml(p.label)}`
+        ).join("; ") +
+        "."
+    ),
+    DATE_FORMAT: profileData.user_dateformat || DEFAULT_DATE_FORMAT,
 
     // Avatar
     L_AVATAR_PANEL: "Avatar control panel",

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
@@ -136,7 +136,7 @@ modcp.get("/modcp", async (c) => {
     S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="f" value="${forumId}" />`),
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -558,7 +558,7 @@ modcp.get("/modcp/split", async (c) => {
     S_SPLIT_ACTION: "/modcp",
     S_FORUM_SELECT: markup(forumSelect),
     S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="topic_id" value="${topicId}" />`),
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
   });
 
   if (posts) {
@@ -568,7 +568,7 @@ modcp.get("/modcp/split", async (c) => {
       tpl.assignBlockVars("postrow", {
         ROW_CLASS: rowClass,
         POSTER_NAME: post.poster?.username ?? "Guest",
-        POST_DATE: formatPhpBBDate(post.post_time),
+        POST_DATE: fmtDate(c, post.post_time),
         POST_SUBJECT: post.posts_text?.post_subject ?? "",
         MESSAGE: parseBBCode(post.posts_text?.post_text ?? ""),
         U_POST_ID: String(post.id),

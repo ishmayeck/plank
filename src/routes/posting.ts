@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, renderErrorBox, formatPhpBBDate, fetchAndRenderJumpbox, renderMessagePage } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderErrorBox, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, renderMessagePage, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies, type Smiley } from "../lib/smilies.js";
@@ -163,7 +163,7 @@ posting.get("/posting", async (c) => {
 
   const smilies = await loadSmilies(supabase);
   const topicReviewHtml = topicId && (mode === "reply" || mode === "quote")
-    ? await renderTopicReview(topicId, smilies, true)
+    ? await renderTopicReview(c, topicId, smilies, true)
     : "";
   const topicTypeToggle = (isFirstPost && isModOrAdmin(user))
     ? buildTopicTypeToggle(currentTopicType)
@@ -219,7 +219,7 @@ posting.get("/posting_topic_review", async (c) => {
   }
 
   const smilies = await loadSmilies(supabase);
-  const reviewHtml = await renderTopicReview(topicId, smilies, false);
+  const reviewHtml = await renderTopicReview(c, topicId, smilies, false);
 
   // Use simple_header/simple_footer templates like phpBB2 does for iframe content
   const tpl = createTemplate();
@@ -318,7 +318,7 @@ posting.post("/posting", async (c) => {
     const topicTypeToggle = (isFirst && isModOrAdmin(user))
       ? buildTopicTypeToggle(requestedTopicType)
       : "";
-    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
+    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(c, topicId, smilies, true) : "";
 
     return c.html(renderPostingForm({
       c,
@@ -345,7 +345,7 @@ posting.post("/posting", async (c) => {
       .maybeSingle();
 
     const previewHtml = parseBBCode(message);
-    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
+    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(c, topicId, smilies, true) : "";
 
     const html = renderPostingForm({
       c,
@@ -375,7 +375,7 @@ posting.post("/posting", async (c) => {
     const supabase = getSupabaseAdmin();
     const smilies = await loadSmilies(supabase);
     const { data: forum } = await supabase.from("forums").select("forum_name").eq("id", forumId).maybeSingle();
-    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(topicId, smilies, true) : "";
+    const reviewHtml = topicId && (mode === "reply" || mode === "quote") ? await renderTopicReview(c, topicId, smilies, true) : "";
     return c.html(renderPostingForm({
       c,
       user, mode, forumId, topicId, postId,
@@ -867,7 +867,7 @@ function renderPostingForm(opts: PostingFormOpts): string {
     S_HIDDEN_FORM_FIELDS: hiddenFields,
     SUBJECT: opts.subject,
     MESSAGE: opts.message,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(opts.c),
     JUMPBOX: opts.jumpboxHtml ?? markup(""),
     TOPIC_REVIEW_BOX: opts.topicReviewHtml ? markup(opts.topicReviewHtml) : markup(""),
     POLLBOX: opts.showPoll ? markup(renderPollBox(opts.pollTitle ?? "", opts.pollOptions ?? [""], opts.pollLength ?? 0)) : markup(""),
@@ -987,7 +987,12 @@ function buildTopicTypeToggle(currentType: number = 0): string {
     `<input type="radio" name="topictype" value="2"${announceChecked} /> Announcement`;
 }
 
-async function renderTopicReview(topicId: number, smilies: Smiley[], inline: boolean): Promise<string> {
+async function renderTopicReview(
+  c: Context,
+  topicId: number,
+  smilies: Smiley[],
+  inline: boolean
+): Promise<string> {
   const adminDb = getSupabaseAdmin();
 
   const { data: posts } = await adminDb
@@ -1028,7 +1033,7 @@ async function renderTopicReview(topicId: number, smilies: Smiley[], inline: boo
       U_POST_ID: String(post.id),
       MINI_POST_IMG: "templates/Solaris/images/icon_minipost.gif",
       L_MINI_POST_ALT: "Post",
-      POST_DATE: formatPhpBBDate(post.post_time),
+      POST_DATE: fmtDate(c, post.post_time),
       POST_SUBJECT: postText?.post_subject ?? "",
       MESSAGE: messageHtml,
     });

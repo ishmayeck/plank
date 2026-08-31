@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getSupabaseAdmin } from "../db/client.js";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { escapeHtml } from "../lib/escape.js";
@@ -140,7 +140,7 @@ search.get("/search", async (c) => {
     L_CHARACTERS: "characters of posts",
     L_SEARCH: "Search",
     S_HIDDEN_FIELDS: formHiddenFields(c),
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -294,7 +294,7 @@ async function handleTopicResults(
     L_LASTPOST: "Last Post",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -332,7 +332,7 @@ async function handleTopicResults(
         : markup(""),
       REPLIES: String(topic.topic_replies ?? 0),
       VIEWS: String(topic.topic_views ?? 0),
-      LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
+      LAST_POST_TIME: lastPost ? fmtDate(c, lastPost.post_time) : "",
       LAST_POST_AUTHOR: lastPostAuthor
         ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
         : markup(""),
@@ -444,7 +444,7 @@ async function handlePostResults(
     L_SUBJECT: "Subject:",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -468,7 +468,7 @@ async function handlePostResults(
         TOPIC_VIEWS: String(topic?.topic_views ?? 0),
         FORUM_NAME: topic?.forums?.forum_name ?? "",
         U_FORUM: `/viewforum/${topic?.forum_id ?? post.forum_id}`,
-        POST_DATE: formatPhpBBDate(post.post_time),
+        POST_DATE: fmtDate(c, post.post_time),
         POST_SUBJECT: post.posts_text?.post_subject ?? "",
         U_POST: `/viewtopic/${post.topic_id}#${post.id}`,
         MESSAGE: messagePreview,
@@ -537,7 +537,7 @@ async function handleNewPosts(c: any) {
     L_LASTPOST: "Last Post",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -571,7 +571,7 @@ async function handleNewPosts(c: any) {
           : markup(""),
         REPLIES: String(topic.topic_replies ?? 0),
         VIEWS: String(topic.topic_views ?? 0),
-        LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
+        LAST_POST_TIME: lastPost ? fmtDate(c, lastPost.post_time) : "",
         LAST_POST_AUTHOR: lastPostAuthor
           ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
           : markup(""),
@@ -637,7 +637,7 @@ async function handleUnanswered(c: any) {
     L_LASTPOST: "Last Post",
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -671,7 +671,7 @@ async function handleUnanswered(c: any) {
           : markup(""),
         REPLIES: "0",
         VIEWS: String(topic.topic_views ?? 0),
-        LAST_POST_TIME: lastPost ? formatPhpBBDate(lastPost.post_time) : "",
+        LAST_POST_TIME: lastPost ? fmtDate(c, lastPost.post_time) : "",
         LAST_POST_AUTHOR: lastPostAuthor
           ? markup(`<a href="/profile/${encodeURIComponent(lastPostAuthor.id)}">${escapeHtml(lastPostAuthor.username)}</a>`)
           : markup(""),

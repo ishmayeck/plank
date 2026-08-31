@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, renderMessagePage, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { isAdmin, isModOrAdmin } from "../lib/userLevel.js";
 import { escapeHtml } from "../lib/escape.js";
@@ -68,7 +68,7 @@ groupcp.get("/groupcp", async (c) => {
     L_INDEX: "Index",
     S_USERGROUP_ACTION: "/groupcp",
     S_HIDDEN_FIELDS: formHiddenFields(c),
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
 
     L_GROUP_MEMBERSHIP_DETAILS: "Group Membership Details",
@@ -270,7 +270,7 @@ async function renderGroupInfo(c: any, groupId: number) {
 
     PAGINATION: "",
     PAGE_NUMBER: "",
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
     PENDING_USER_BOX: "",
   });

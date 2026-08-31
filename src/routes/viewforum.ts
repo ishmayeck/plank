@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox, formatUsernameLink } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, formatUsernameLink, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
@@ -187,7 +187,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     ),
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: jumpboxHtml,
     S_AUTH_LIST: buildAuthList(forum, user, userAcls),
 
@@ -213,7 +213,7 @@ viewforum.get("/viewforum/:id", async (c) => {
     for (const topic of topics) {
       const lastPost = lastPosts[topic.topic_last_post_id];
       const lastPostTime = lastPost
-        ? formatPhpBBDate(lastPost.post_time)
+        ? fmtDate(c, lastPost.post_time)
         : "";
       const lastPostPoster = lastPost?.poster as any;
       const lastPostAuthor = lastPostPoster
