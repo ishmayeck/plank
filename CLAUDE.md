@@ -158,6 +158,21 @@ npm run dev           # Start Hono dev server
   `cleanupTestUser` from `test/util/users.ts` in `beforeAll` — it tears
   down auth.users entries by email so re-runs don't collide on
   fixed-email fixtures (`supabase db reset` doesn't truncate auth).
+- **Finish visual or preference-driven work by looking at it in a browser**,
+  not by trusting a green suite. Start the dev server and drive the actual
+  page (the in-app Browser pane, or Chrome for anything needing a real
+  logged-in session). Two real bugs shipped past a full green run because
+  assertions about rendered HTML cannot see them: a drop-in theme that
+  rendered perfectly and *completely unstyled* (`T_HEAD_STYLESHEET` was
+  hardcoded to `Solaris.css`), and timezone preferences that silently fell
+  back to UTC. In both cases the HTML was correct — the markup, the escaping,
+  the block iteration — and the thing that was wrong sat outside what any
+  assertion was looking at.
+  - **Check what is actually listening before debugging a 404.** A stale
+    `tsx watch` holding port 3000 makes the new server die with `EADDRINUSE`
+    into a log you aren't reading, and you end up "debugging" code that isn't
+    running. `pkill -f "tsx watch"` does not always match it;
+    `ss -lptn 'sport = :3000'` gives the real PID.
 - **Security tests ENUMERATE a surface; they don't sample it.**
   `test/security/invariants.test.ts` walks every form on every page (with the
   real CSRF middleware on, which the rest of the suite disables) and every

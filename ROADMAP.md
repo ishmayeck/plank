@@ -363,6 +363,58 @@ deployment's real asset origins are pinned down.
 
 ---
 
+## Chunk 26: Avatar Resizing (open — needs a decision)
+
+**Goal**: accept an oversized avatar and scale it down to the configured
+maximum, preserving aspect ratio, instead of rejecting it.
+
+Today `profile.ts` reads the dimensions with `image-size` and refuses anything
+over `avatar_max_width`/`avatar_max_height` (200×200 by default). So a member
+uploading a photo straight off their phone simply cannot set an avatar. Note
+this is the ONLY upload path that would need it — the other one is admin theme
+zips, which are stored as-is.
+
+**Serverless viability — the binding constraint is CPU, not memory.** Supabase
+Edge Functions allow 256MB memory and **2 seconds of CPU time per request**
+(async I/O doesn't count, but decode/encode is pure CPU, so it all counts).
+Decoding a 24-megapixel phone photo to an RGBA bitmap is ~96MB and a
+substantial fraction of that 2s before any resizing happens. The 20MB bundle
+limit is not a problem (we're at ~1MB).
+
+Three ways to do it, roughly in order of how well they fit this project:
+
+1. **Resize in the browser before upload** (Canvas `drawImage` → `toBlob`).
+   Costs the server nothing, works on the free plan, and uploads ~20KB instead
+   of 6MB — noticeably faster for someone on mobile data. phpBB2 templates are
+   already full of inline JS so this is idiomatic here. The existing server-side
+   validation stays exactly as it is: the client is an optimisation, never the
+   check. Degrades to today's behaviour with JS off.
+
+2. **Resize in the Edge function with WASM codecs** (`@jsquash`, `photon`).
+   Works without JS and keeps the rule server-side, but it has to run inside
+   the 2s CPU budget. Only safe if the *pixel count* is bounded first —
+   `image-size` already reads dimensions from the header without decoding, so
+   rejecting absurd inputs (say >40MP) before attempting a decode turns an
+   unbounded risk into a bounded one. Worth doing regardless of which option
+   is picked.
+
+3. **Supabase Storage image transformations.** Least code by far — transform
+   on read via a URL parameter, cached at the CDN. But `supabase/config.toml`
+   says it plainly: *"Image transformation API is available to Supabase Pro
+   plan."* That's $25/month for a hobby board, and it transforms on serve, so
+   the original full-size file still occupies storage.
+
+**Recommendation**: option 1, with option 2's pixel-count guard added to the
+existing server validation either way. Option 3 only if the board ends up on
+Pro for other reasons.
+
+**Tests**: an oversized image is stored at the configured maximum with its
+aspect ratio preserved; a non-square image is not distorted; an image already
+under the limit is stored untouched; the server still rejects oversized bytes
+posted directly, bypassing whatever the client did.
+
+---
+
 ## Chunk 18: Remaining Polish
 
 **Goal**: Features deferred from earlier chunks.
