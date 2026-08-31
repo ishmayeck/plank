@@ -25,13 +25,51 @@ export interface ThemePackageOptions {
   maxTotalBytes?: number;
   /** Max uncompressed bytes for any single entry. */
   maxEntryBytes?: number;
+  /** Theme name to use when the archive has no single root directory. */
+  fallbackName?: string;
 }
 
 const DEFAULTS: Required<ThemePackageOptions> = {
   maxEntries: 2000,
   maxTotalBytes: 50 * 1024 * 1024, // 50 MiB
   maxEntryBytes: 10 * 1024 * 1024, // 10 MiB
+  fallbackName: "Uploaded",
 };
+
+/**
+ * Archive junk that is never theme content: the `__MACOSX` sidecar tree a
+ * macOS-made zip carries, and dotfiles (`.DS_Store`, and the `._name` resource
+ * forks inside `__MACOSX`). The resource forks matter specifically because
+ * they mirror real filenames — `__MACOSX/._overall_header.tpl` passes the
+ * extension allowlist and would otherwise be indistinguishable from a second
+ * top-level directory, defeating root detection.
+ */
+function isArchiveJunk(name: string): boolean {
+  return name.split("/").some((seg, i) => seg.startsWith(".") || (i === 0 && seg === "__MACOSX"));
+}
+
+/**
+ * The single top-level directory every kept entry sits under, or null.
+ *
+ * Real phpBB2 theme archives wrap everything in a directory named after the
+ * theme. Two things depend on stripping it: the loader resolves templates by
+ * bare name ("overall_header.tpl"), and the directory name IS the theme name —
+ * phpBB2 templates hard-code their own asset paths as
+ * `templates/<Name>/images/...`, so we need it to serve those back.
+ *
+ * Computed from the entries we KEEP, after junk and the extension allowlist
+ * have been applied, so a sidecar tree can't defeat detection.
+ */
+function commonRootDir(names: string[]): string | null {
+  if (names.length === 0) return null;
+  const roots = new Set<string>();
+  for (const name of names) {
+    const slash = name.indexOf("/");
+    if (slash === -1) return null; // a file sits at the archive root
+    roots.add(name.slice(0, slash));
+  }
+  return roots.size === 1 ? [...roots][0]! : null;
+}
 
 /**
  * Files we accept out of an uploaded theme. Templates compile to AST;
@@ -50,6 +88,12 @@ const ALLOWED_EXT = new Set([
 ]);
 
 export interface ThemePackage {
+  /**
+   * Theme name: the archive's root directory when it has one, otherwise the
+   * caller's fallback. This is the name the theme's own templates use in their
+   * hard-coded `templates/<Name>/images/...` asset paths.
+   */
+  name: string;
   /** SHA-256 of the raw zip bytes, hex. The content-addressed cache key. */
   hash: string;
   /** template name (relative path) -> serialized AST JSON. */
@@ -113,9 +157,9 @@ export async function ingestThemeZip(
     );
   }
 
-  const templates: Record<string, string> = {};
-  const assets: Record<string, Uint8Array> = {};
-  const assetNames: string[] = [];
+  // First pass: validate and keep. Names are still archive-relative here —
+  // the common root can only be known once we've seen every kept entry.
+  const kept: { name: string; data: Uint8Array; isTemplate: boolean }[] = [];
   let totalBytes = 0;
 
   for (const name of names) {
@@ -126,6 +170,8 @@ export async function ingestThemeZip(
     if (!isSafeEntryName(name)) {
       throw new ThemePackageError(`Unsafe entry path (zip-slip?): "${name}"`);
     }
+
+    if (isArchiveJunk(name)) continue;
 
     const e = ext(name);
     if (!ALLOWED_EXT.has(e)) {
@@ -147,12 +193,25 @@ export async function ingestThemeZip(
       );
     }
 
-    if (e === ".tpl") {
+    kept.push({ name, data, isTemplate: e === ".tpl" });
+  }
+
+  // Second pass: strip the wrapper directory, then compile.
+  const root = commonRootDir(kept.map((k) => k.name));
+  const strip = (name: string) => (root ? name.slice(root.length + 1) : name);
+
+  const templates: Record<string, string> = {};
+  const assets: Record<string, Uint8Array> = {};
+  const assetNames: string[] = [];
+
+  for (const { name, data, isTemplate } of kept) {
+    const relative = strip(name);
+    if (isTemplate) {
       const text = new TextDecoder("utf-8").decode(data);
-      templates[name] = serializeAst(compile(text));
+      templates[relative] = serializeAst(compile(text));
     } else {
-      assets[name] = data;
-      assetNames.push(name);
+      assets[relative] = data;
+      assetNames.push(relative);
     }
   }
 
@@ -165,5 +224,5 @@ export async function ingestThemeZip(
   const hash = await sha256Hex(zipBytes);
   assetNames.sort();
 
-  return { hash, templates, assetNames, assets };
+  return { name: root ?? opts.fallbackName, hash, templates, assetNames, assets };
 }

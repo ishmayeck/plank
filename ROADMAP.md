@@ -567,9 +567,14 @@ Data-not-code is the safety property that makes this tractable: a malicious
 is the only place untrusted bytes touch the system — harden that, and the
 escape-by-default renderer covers the output.
 
-- [ ] **Admin upload UI**: accept a theme `.zip`, store raw in Supabase
-  Storage under a content hash (`themes/{hash}/...`). **(owner: needs running
-  app + Storage to verify)**
+**STATUS: ✅ complete (2026-08-30).** Verified end-to-end in a browser: upload
+a real theme zip through the admin panel, activate it, watch the board switch,
+revert. See `feature/chunk-23-drop-in-themes`.
+
+- [x] **Admin upload UI** ✅ — `/admin/themes`: upload, activate, revert to
+  bundled, delete. Refuses to delete the theme in use. Actions are links, so
+  they carry the CSRF token in the query string. States the trust boundary on
+  the page, since it isn't obvious (see below).
 - [x] **Unzip + harden + compile** ✅ — `src/lib/theme_package.ts`
   `ingestThemeZip()`: fflate unzip (no `node:zlib`), zip-slip / zip-bomb /
   entry-count guards, `.tpl`/`.css`/`.cfg`/image allowlist, compiles each
@@ -581,12 +586,37 @@ escape-by-default renderer covers the output.
   (SHA-256 of the zip bytes); same bytes → same hash, re-upload → new hash
   → automatic cache miss. (The in-memory memo keyed by hash lands when the
   loader is wired to Storage, owner-side.)
-- [ ] **Theme switching** in admin board config (select active theme by
-  hash); coherence between the raw `.zip` and its compiled AST set enforced
-  by the shared hash. **(owner: needs running app)**
+- [x] **Theme switching** ✅ — a `themes` table indexes installs by content
+  hash; a partial unique index enforces at most one active theme in the
+  DATABASE rather than trusting whichever handler ran last. `theme_runtime`
+  resolves the active theme and throws the Chunk 21 loader switch, cached
+  module-wide and invalidated by the admin actions. A theme whose manifest
+  won't fetch falls back to the bundled theme and logs, rather than taking the
+  board down.
+- [x] **Theme-aware asset serving** ✅ — phpBB2 templates hard-code
+  `templates/<Name>/images/...`, so both entries register asset routes that
+  redirect to the active theme's Storage objects and call `next()` otherwise.
+  Registered BEFORE the bundled handlers, or those match first.
+- [x] **Per-theme stylesheet** ✅ — themes name their CSS after themselves;
+  `T_HEAD_STYLESHEET` was hardcoded to `Solaris.css`, so any other theme
+  rendered unstyled. Detected at install, stored on the row. Found by looking
+  at the running app, not by a test — the HTML was correct, only the
+  stylesheet URL was wrong.
 - [ ] **Distribution note (deferred while personal):** shipped artifact
   contains zero theme files — themes are user-supplied at runtime, which
   also keeps the licensing boundary clean if this ever leaves "just for me."
+  (Not done: Solaris is still bundled as the fallback theme.)
+
+**Trust boundary — the roadmap previously stated this incorrectly.** "A
+malicious `.tpl` can only describe blocks and `{VAR}` slots, never execute" is
+true of the SERVER: the AST is inert data and there is no expression
+evaluation, so an upload cannot run code on the box, and escape-by-default
+still protects every value Plank substitutes into the template. It is NOT true
+of the browser: a template's literal text is emitted verbatim, because that
+text IS the page's HTML, so `<script>` in a `.tpl` runs for every visitor.
+Excluding `.js` from the extension allowlist therefore buys much less than it
+appears. Installing a theme is an admin-only, full-trust act, equivalent to
+granting site-wide script execution — the admin page says so.
 
 **Tests**: Upload → unzip → compile → render an unmodified third-party
 phpBB2 theme; zip-slip and oversized-entry uploads are rejected; re-upload

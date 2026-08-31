@@ -17,6 +17,7 @@ import { createTemplate } from "../template/source.js";
 import { checkRateLimit, RATE_LIMITS, retryAfterText } from "../lib/rate_limit.js";
 import { loginRedirect } from "./auth.js";
 import type { Context } from "hono";
+import { currentStylesheet } from "../lib/theme_runtime.js";
 
 const posting = new Hono();
 
@@ -230,7 +231,7 @@ posting.get("/posting_topic_review", async (c) => {
     S_CONTENT_ENCODING: "utf-8",
     SITENAME: "Plank Forum",
     PAGE_TITLE: "Topic Review",
-    T_HEAD_STYLESHEET: "Solaris.css",
+    T_HEAD_STYLESHEET: currentStylesheet(),
     META: '<base href="/">',
     T_BODY_BGCOLOR: "#E5E5E5",
     T_BODY_TEXT: "#000000",

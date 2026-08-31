@@ -60,6 +60,7 @@ const SIDEBAR: NavSection[] = [
       { label: "Ranks", url: "/admin/ranks" },
       { label: "Smilies", url: "/admin/smilies" },
       { label: "Word censors", url: "/admin/words" },
+      { label: "Themes", url: "/admin/themes", prefix: "/admin/themes" },
     ],
   },
 ];
@@ -122,6 +123,17 @@ const STYLES = `
   .plank-admin-footer {
     margin-top: 24px; padding: 12px 0; border-top: 1px solid #DDD; font-size: 10px; color: #888; text-align: center;
   }
+  /* Result banners and data tables for Plank-owned admin pages (themes), which
+     have no phpBB2 original to inherit forumline styling from. */
+  .plank-admin-note { padding: 8px 12px; margin: 12px 0; border-radius: 2px; border: 1px solid; }
+  .plank-admin-note-ok { background: #EFF7EF; border-color: #B6D7B6; color: #2A5E2A; }
+  .plank-admin-note-error { background: #FBEFEF; border-color: #E0B4B4; color: #8A2A2A; }
+  .plank-admin-table { border-collapse: collapse; background: #FFF; border: 1px solid #DDD; }
+  .plank-admin-table th {
+    text-align: left; background: #F0F0F0; border-bottom: 1px solid #DDD; padding: 6px 8px; font-size: 11px;
+  }
+  .plank-admin-table td { border-bottom: 1px solid #EEE; padding: 6px 8px; }
+  .plank-admin-table code { font-size: 10px; color: #666; }
 `;
 
 export interface AdminLayoutOpts {

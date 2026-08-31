@@ -193,8 +193,25 @@ npm run dev           # Start Hono dev server
 - **Uploaded themes go through `ingestThemeZip()`** from
   `src/lib/theme_package.ts` — the only place untrusted bytes are unzipped,
   so it carries the hardening (zip-slip, zip-bomb caps, extension
-  allowlist). It compiles `.tpl` → AST and content-addresses by SHA-256.
-  Keep the unzip the single chokepoint; don't unzip uploads elsewhere.
+  allowlist, archive-junk filter). It compiles `.tpl` → AST and
+  content-addresses by SHA-256. Keep the unzip the single chokepoint; don't
+  unzip uploads elsewhere. `src/lib/theme_store.ts` persists a package
+  (Storage + the `themes` table) and `src/lib/theme_runtime.ts` resolves the
+  active one and throws the Chunk 21 loader switch — cached module-wide, so
+  **admin theme mutations must call `clearThemeRuntimeCache()`**, the same
+  rule as the smilies and word-censor caches.
+  - **A theme's `.tpl` text becomes the page's HTML.** The AST is inert data,
+    so an upload can't execute anything server-side and can't bypass the
+    escaping applied to values Plank substitutes in — but literal `<script>`
+    in a template runs for every visitor, because that text IS the page.
+    Excluding `.js` from the allowlist buys less than it looks. Theme upload
+    is admin-only and full-trust; don't ever expose it more widely.
+  - **Nothing may hardcode the theme name or its asset filenames.** phpBB2
+    themes reference their own directory (`templates/<Name>/images/...`) and
+    name their stylesheet after themselves. Asset routes ignore the name in
+    the path and serve the active theme; `T_HEAD_STYLESHEET` comes from
+    `currentStylesheet()`. Hardcoding `Solaris.css` there made every uploaded
+    theme render unstyled, and no HTML assertion could see it.
 
 ## Key Design Decisions
 

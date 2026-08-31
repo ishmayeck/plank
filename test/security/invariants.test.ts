@@ -187,6 +187,7 @@ describe("INVARIANT: every POST form carries a CSRF token", () => {
     "/admin/bans",
     "/admin/groups",
     "/admin/auth",
+    "/admin/themes",
   ];
 
   let totalFormsSeen = 0;

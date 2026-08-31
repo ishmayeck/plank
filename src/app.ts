@@ -2,6 +2,7 @@ import "dotenv/config";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { registerApp } from "./app_core.js";
+import { registerThemeAssetRoutes } from "./lib/theme_runtime.js";
 
 /**
  * Node entry: filesystem static assets + the shared app core. This is what
@@ -9,6 +10,10 @@ import { registerApp } from "./app_core.js";
  * src/edge.ts instead (Storage-backed assets, precompiled templates).
  */
 const app = new Hono();
+
+// Uploaded themes first: these redirect to Storage when one is active and
+// call next() otherwise, so the filesystem handlers below stay the default.
+registerThemeAssetRoutes(app);
 
 // Serve theme static assets (CSS, images)
 app.use(
