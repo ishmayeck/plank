@@ -6,6 +6,33 @@ Edge Functions** (Deno), keeping the stack Supabase-only. The same code is also
 viable on **Cloudflare Workers** and in a **Node/Docker** container. This doc is
 the runtime-portability audit (Chunk 22) and the remaining steps to ship.
 
+## ⚠️ Before the next deploy — required
+
+The Aug 2026 security remediation (Chunk 25, branch merged to master) landed
+two items that need an action on the next deploy. Do these or the hardening is
+incomplete:
+
+1. **Set `PLANK_PROXY_SECRET` on BOTH the Worker and the function.** Until it
+   exists on both sides, the raw function URL is reachable directly and per-IP
+   rate limiting is bypassable by spoofing `x-plank-client-ip`. Enforcement is
+   opt-in exactly so this deploy can't lock out the running site. **Worker
+   first, then the function** — the reverse order 404s every request in
+   between:
+   ```
+   wrangler secret put PLANK_PROXY_SECRET       # in infra/cloudflare/, first
+   supabase secrets set PLANK_PROXY_SECRET=...   # same value, second
+   ```
+   Full rationale under "Still open (owner decisions)" below.
+
+2. **`npm run build` (tsc) has 13 pre-existing type errors** — unrelated to the
+   security work, present on master before it. `build:edge` uses esbuild, which
+   doesn't typecheck, so these don't block the Edge deploy, but they mean `tsc`
+   is not a usable signal. Worth a cleanup pass before relying on it in CI.
+
+Nice-to-have, not blocking: tighten the CSP's `script-src` once the
+deployment's real asset origins are pinned (currently the CSP constrains
+framing/base/objects/forms only).
+
 ## Status
 
 **🚀 LIVE: https://sb-plank.ishmayeck.net** (the `sb-` prefix marks this as
