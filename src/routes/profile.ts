@@ -5,6 +5,8 @@ import { parseBBCode } from "../lib/bbcode.js";
 import { generatePagination } from "../lib/pagination.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { getAvatarConfig, sniffImageFormat, type AvatarConfig } from "../lib/avatar.js";
+import { exceedsDecodeBudget } from "../lib/imagefit.js";
+import { avatarResizeScript, avatarResizeNotice } from "../lib/avatar_client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { safeExternalUrl, normalizeWebsiteInput } from "../lib/url.js";
 import {
@@ -225,6 +227,14 @@ profile.post("/profile", async (c) => {
         const h = dims.height ?? 0;
         if (!w || !h) {
           avatarError = "Could not read image dimensions; please try a different file.";
+        } else if (exceedsDecodeBudget(w, h)) {
+          // Dimensions come from the header without decoding, so this check
+          // is nearly free — and it is the one that keeps an absurd input
+          // from ever reaching a decoder. Separate message from the ordinary
+          // too-large case: this one the browser resizer can't rescue either.
+          avatarError =
+            `That image is ${w}\u00d7${h}, which is too large to process. ` +
+            `Please crop or shrink it before uploading.`;
         } else if (w > avatarConfig.maxWidth || h > avatarConfig.maxHeight) {
           avatarError =
             `The image dimensions are too large. Maximum allowed is ` +
@@ -686,8 +696,11 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
 
     // Avatar
     L_AVATAR_PANEL: "Avatar control panel",
-    L_AVATAR_EXPLAIN:
-      `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`,
+    L_AVATAR_EXPLAIN: markup(
+      escapeHtml(
+        `Displays a small graphic image below your details in posts. Only one image can be displayed at a time, its width can be no greater than ${maxW} pixels, the height no greater than ${maxH} pixels, and the file size no more than ${maxFilesize} bytes.`
+      ) + avatarResizeNotice(maxW, maxH).html
+    ),
     L_CURRENT_IMAGE: "Current Image",
     AVATAR: safeExternalUrl(profileData.user_avatar)
       ? markup(`<img src="${escapeHtml(safeExternalUrl(profileData.user_avatar)!)}" alt="Avatar" />`)
@@ -697,7 +710,13 @@ function renderProfileEditForm(opts: ProfileEditOpts): string {
     AVATAR_SIZE: String(maxFilesize),
     L_SUBMIT: "Submit",
     L_RESET: "Reset",
-    S_HIDDEN_FIELDS: formHiddenFields(opts.c),
+    // The resize script rides in here because S_HIDDEN_FIELDS is the only
+    // hook inside the form — themes render unmodified, so there is nowhere to
+    // put a <script> in the template itself. It sits after the file input,
+    // which is what lets it bind on load.
+    S_HIDDEN_FIELDS: markup(
+      formHiddenFields(opts.c).html + avatarResizeScript(maxW, maxH).html
+    ),
   });
 
   // Enable edit profile switches

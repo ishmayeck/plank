@@ -363,7 +363,7 @@ deployment's real asset origins are pinned down.
 
 ---
 
-## Chunk 26: Avatar Resizing (open — needs a decision)
+## Chunk 26: Avatar Resizing ✅ (2026-08-30)
 
 **Goal**: accept an oversized avatar and scale it down to the configured
 maximum, preserving aspect ratio, instead of rejecting it.
@@ -404,9 +404,24 @@ Three ways to do it, roughly in order of how well they fit this project:
    plan."* That's $25/month for a hobby board, and it transforms on serve, so
    the original full-size file still occupies storage.
 
-**Recommendation**: option 1, with option 2's pixel-count guard added to the
-existing server validation either way. Option 3 only if the board ends up on
-Pro for other reasons.
+**Decided: option 1**, with option 2's pixel-count guard added to the server
+validation as well. Option 3 stays available if the board ever ends up on Pro
+for other reasons.
+
+**Implemented.** `src/lib/imagefit.ts` holds the fit arithmetic (also inlined
+into the client script, with a test that runs both copies over the same inputs
+so they can't drift); `src/lib/avatar_client.ts` builds the browser script,
+injected through `S_HIDDEN_FIELDS` because that is the only hook inside the
+form in an unmodified theme. The server gained the decode-budget guard, which
+rejects >40MP from the file header without handing bytes to a decoder.
+
+Verified in a real browser rather than only in tests, since the scaling itself
+has no DOM for vitest to exercise: a 1600×1200 photo became 200×150 with the
+4:3 ratio intact, 50KB → 3.7KB (93% smaller), and the full upload round-trip
+stored exactly those bytes at exactly those dimensions — an upload the server
+would previously have rejected outright. A 64×64 image passes through
+byte-identical, because re-encoding something already inside the box only
+costs quality.
 
 **Tests**: an oversized image is stored at the configured maximum with its
 aspect ratio preserved; a non-square image is not distorted; an image already

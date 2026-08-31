@@ -321,3 +321,68 @@ describe("Member List", () => {
     expect(html).toContain("Test City");
   });
 });
+
+describe("Avatar resizing (Chunk 26)", () => {
+  it("ships the resize script inside the profile form", async () => {
+    const html = await (
+      await app.request("/profile", { headers: authHeaders() })
+    ).text();
+    // Must be inside the form, or it submits without the resized file.
+    const form = html.match(/<form[^>]*enctype="multipart\/form-data"[\s\S]*?<\/form>/i);
+    expect(form, "no upload form on the profile page").not.toBeNull();
+    expect(form![0]).toContain("input[type=file][name=avatar]");
+    expect(form![0]).toContain("MAX_W = 200");
+  });
+
+  it("tells the user that resizing will happen", async () => {
+    const html = await (
+      await app.request("/profile", { headers: authHeaders() })
+    ).text();
+    expect(html).toMatch(/scaled down to 200&times;200 in your browser/i);
+  });
+
+  it("still rejects oversized bytes posted directly, ignoring the client", async () => {
+    // The script is an optimisation; the server check is the actual rule.
+    const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const ihdrLen = Buffer.from([0, 0, 0, 13]);
+    const ihdrType = Buffer.from("IHDR", "ascii");
+    const w = Buffer.alloc(4); w.writeUInt32BE(900);
+    const h = Buffer.alloc(4); h.writeUInt32BE(900);
+    const tail = Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00]);
+    const png = Buffer.concat([sig, ihdrLen, ihdrType, w, h, tail, Buffer.alloc(4)]);
+
+    const formData = new FormData();
+    formData.append("location", "Test City");
+    formData.append("avatar", new File([png], "big.png", { type: "image/png" }));
+    const res = await app.request("/profile", {
+      method: "POST",
+      body: formData,
+      headers: authHeaders(),
+    });
+    expect(await res.text()).toContain("dimensions are too large");
+  });
+
+  it("refuses an image too large to decode, with its own message", async () => {
+    // 30000x30000 = 900MP. Dimensions come from the header, so this is
+    // rejected without ever handing the bytes to a decoder.
+    const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const ihdrLen = Buffer.from([0, 0, 0, 13]);
+    const ihdrType = Buffer.from("IHDR", "ascii");
+    const w = Buffer.alloc(4); w.writeUInt32BE(30000);
+    const h = Buffer.alloc(4); h.writeUInt32BE(30000);
+    const tail = Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00]);
+    const png = Buffer.concat([sig, ihdrLen, ihdrType, w, h, tail, Buffer.alloc(4)]);
+
+    const formData = new FormData();
+    formData.append("location", "Test City");
+    formData.append("avatar", new File([png], "huge.png", { type: "image/png" }));
+    const res = await app.request("/profile", {
+      method: "POST",
+      body: formData,
+      headers: authHeaders(),
+    });
+    const html = await res.text();
+    expect(html).toContain("too large to process");
+    expect(html).not.toContain("dimensions are too large");
+  });
+});
