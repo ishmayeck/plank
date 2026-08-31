@@ -1,14 +1,21 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { generatePagination } from "../lib/pagination.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { loadSmilies, replaceSmilies } from "../lib/smilies.js";
 import { loadWordCensors, applyCensors } from "../lib/wordcensor.js";
 import { escapeHtml } from "../lib/escape.js";
 import { safeExternalUrl } from "../lib/url.js";
+import { markTopicRead } from "../lib/readtracking.js";
+import {
+  getWatchState,
+  watchTopic,
+  unwatchTopic,
+  clearNotifyFlag,
+} from "../lib/watch.js";
 import { markup } from "../lib/markup.js";
 import { renderPollForTopic } from "./poll.js";
-import { getCsrfToken, csrfQueryParam } from "../lib/csrf.js";
+import { getCsrfToken, csrfQueryParam, validateQueryCsrf } from "../lib/csrf.js";
 import { loadUserGroupAcls, canDo, canMod } from "../lib/permissions.js";
 import { getSupabaseAdmin } from "../db/client.js";
 
@@ -130,6 +137,32 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     .limit(1)
     .maybeSingle();
 
+  // Watch / unwatch. A link rather than a form (phpBB2 renders it inline in
+  // the footer), so it carries its token in the query string like the other
+  // link-triggered mutations.
+  let watchState = { watching: false, notify: false };
+  if (user) {
+    const watchAction = c.req.query("watch");
+    if (watchAction === "topic" || watchAction === "unwatch") {
+      if (!validateQueryCsrf(c)) return c.text("CSRF token mismatch", 403);
+      if (watchAction === "topic") await watchTopic(supabase, user.id, topicId);
+      else await unwatchTopic(supabase, user.id, topicId);
+    }
+    watchState = await getWatchState(supabase, user.id, topicId);
+    // Looking at the topic is what "seeing it" means.
+    if (watchState.notify) {
+      await clearNotifyFlag(supabase, user.id, topicId);
+      watchState.notify = false;
+    }
+  }
+
+  // Record that this user has now seen the topic. Awaited rather than
+  // fire-and-forget: it's a single upsert, and letting it race means the very
+  // next page load can still show the topic as unread.
+  if (user) {
+    await markTopicRead(supabase, user.id, topicId);
+  }
+
   // Render poll if topic has one
   const showViewResults = c.req.query("poll_results") === "1";
   const pollHtml = await renderPollForTopic(
@@ -203,7 +236,7 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     // Pagination
     PAGINATION: pagination.html,
     PAGE_NUMBER: pagination.pageNumber,
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
 
     // Post display form
     S_POST_DAYS_ACTION: `/viewtopic/${topicId}`,
@@ -215,7 +248,13 @@ viewtopic.get("/viewtopic/:id", async (c) => {
     ),
 
     // Topic admin
-    S_WATCH_TOPIC: "",
+    S_WATCH_TOPIC: user
+      ? markup(
+          watchState.watching
+            ? `<a href="/viewtopic/${topicId}?watch=unwatch&amp;${csrfQueryParam(c)}">Stop watching this topic</a>`
+            : `<a href="/viewtopic/${topicId}?watch=topic&amp;${csrfQueryParam(c)}">Watch this topic for replies</a>`
+        )
+      : markup(""),
     S_TOPIC_ADMIN: topicAdminHtml,
     S_AUTH_LIST: "",
     JUMPBOX: jumpboxHtml,
@@ -282,19 +321,19 @@ viewtopic.get("/viewtopic/:id", async (c) => {
           ? markup(`<img src="${escapeHtml(rank.image)}" alt="${escapeHtml(rank.title)}" /><br />`)
           : markup(""),
         POSTER_AVATAR: avatar,
-        POSTER_JOINED: `Joined: ${formatPhpBBDate(poster?.user_regdate ?? post.post_time, true)}`,
+        POSTER_JOINED: `Joined: ${fmtDateOnly(c, poster?.user_regdate ?? post.post_time)}`,
         POSTER_POSTS: `Posts: ${poster?.user_posts ?? 0}`,
         POSTER_FROM: poster?.user_from ? `Location: ${poster.user_from}` : "",
         U_POST_ID: String(post.id),
         U_MINI_POST: `/viewtopic/${topicId}#${post.id}`,
         MINI_POST_IMG: "templates/Solaris/images/icon_minipost.gif",
         L_MINI_POST_ALT: "Post",
-        POST_DATE: formatPhpBBDate(post.post_time),
+        POST_DATE: fmtDate(c, post.post_time),
         POST_SUBJECT: applyCensors(postText?.post_subject ?? "", censors),
         MESSAGE: messageHtml,
         SIGNATURE: signature,
         EDITED_MESSAGE: post.post_edit_count > 0
-          ? markup(`<br /><br />Last edited by ${escapeHtml(poster?.username ?? "Unknown")} on ${formatPhpBBDate(post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`)
+          ? markup(`<br /><br />Last edited by ${escapeHtml(poster?.username ?? "Unknown")} on ${fmtDate(c, post.post_edit_time)}; edited ${post.post_edit_count} time${post.post_edit_count > 1 ? "s" : ""} in total`)
           : markup(""),
         QUOTE_IMG: quoteImg,
         EDIT_IMG: editImg,

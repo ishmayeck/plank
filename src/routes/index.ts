@@ -1,8 +1,10 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, formatPhpBBDate, formatUsernameLink, ADMIN_COLOR, MOD_COLOR } from "../lib/render.js";
+import { createPageTemplate, renderPage, fmtDate, fmtDateOnly, formatUsernameLink, ADMIN_COLOR, MOD_COLOR, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
+import { loadReadState, isForumUnread } from "../lib/readtracking.js";
+import { csrfQueryParam } from "../lib/csrf.js";
 import { loadUserGroupAcls, filterViewable } from "../lib/permissions.js";
 
 const index = new Hono();
@@ -144,14 +146,14 @@ index.get("/", async (c) => {
     TOTAL_USERS: markup(`We have <b>${totalUsers ?? 0}</b> registered user${(totalUsers ?? 0) !== 1 ? "s" : ""}`),
     NEWEST_USER: markup(newestUserStr),
     TOTAL_USERS_ONLINE: markup(totalOnlineStr + regStr + hidStr + guestStr),
-    RECORD_USERS: markup(`Most users ever online was <b>${recordCount}</b> on ${formatPhpBBDate(recordDate)}`),
+    RECORD_USERS: markup(`Most users ever online was <b>${recordCount}</b> on ${fmtDate(c, recordDate)}`),
     LOGGED_IN_USER_LIST: markup(`Registered users: ${userListHtml}`),
-    CURRENT_TIME: `The time now is ${formatPhpBBDate(new Date())}`,
+    CURRENT_TIME: `The time now is ${fmtDate(c, new Date())}`,
 
     // Links
     U_VIEWONLINE: "/viewonline",
-    U_MARK_READ: "/markread",
-    S_TIMEZONE: "All times are GMT",
+    U_MARK_READ: user ? `/markread?${csrfQueryParam(c)}` : "/",
+    S_TIMEZONE: timezoneNotice(c),
 
     // Login form (shown for logged-out users)
     S_LOGIN_ACTION: "/login",
@@ -168,7 +170,7 @@ index.get("/", async (c) => {
     U_SEARCH_UNANSWERED: "/search?mode=unanswered",
     L_SEARCH_UNANSWERED: "View unanswered posts",
     LAST_VISIT_DATE: user?.lastVisit
-      ? `You last visited on ${formatPhpBBDate(user.lastVisit)}`
+      ? `You last visited on ${fmtDate(c, user.lastVisit)}`
       : "",
   });
 
@@ -240,6 +242,9 @@ index.get("/", async (c) => {
 
   // Build category/forum blocks
   if (categories && forums) {
+    // One query for every forum on the page, not one per forum.
+    const readState = await loadReadState(supabase, user, { forumIds });
+
     for (const cat of categories) {
       tpl.assignBlockVars("catrow", {
         U_VIEWCAT: `/category/${cat.id}`,
@@ -248,11 +253,16 @@ index.get("/", async (c) => {
 
       const catForums = forums.filter((f: any) => f.cat_id === cat.id);
       for (const forum of catForums) {
+        const forumUnread = isForumUnread(
+          readState,
+          forum.id,
+          lastPostMap[forum.id]?.time
+        );
         let lastPostText = markup("No posts");
         if (lastPostMap[forum.id]) {
           const lp = lastPostMap[forum.id];
           lastPostText = markup(
-            `${formatPhpBBDate(lp.time)}<br />` +
+            `${fmtDate(c, lp.time)}<br />` +
             `<a href="/profile/${encodeURIComponent(lp.userId)}">${escapeHtml(lp.username)}</a> ` +
             `<a href="/viewtopic/${lp.topicId}#${lp.postId}">` +
             `<img src="templates/Solaris/images/icon_latest_reply.gif" alt="Latest Reply" border="0" /></a>`
@@ -268,7 +278,10 @@ index.get("/", async (c) => {
           : "None";
 
         tpl.assignBlockVars("catrow.forumrow", {
-          FORUM_FOLDER_IMG: "templates/Solaris/images/folder.gif",
+          FORUM_FOLDER_IMG: forumUnread
+            ? "templates/Solaris/images/folder_new.gif"
+            : "templates/Solaris/images/folder.gif",
+          L_FORUM_FOLDER_ALT: forumUnread ? "New posts" : "No new posts",
           U_VIEWFORUM: `/viewforum/${forum.id}`,
           FORUM_NAME: forum.forum_name,
           FORUM_DESC: forum.forum_desc ?? "",

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createPageTemplate, renderPage, renderMessagePage, formatPhpBBDate, fetchAndRenderJumpbox } from "../lib/render.js";
+import { createPageTemplate, renderPage, renderMessagePage, fmtDate, fmtDateOnly, fetchAndRenderJumpbox, timezoneNotice } from "../lib/render.js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { parseBBCode } from "../lib/bbcode.js";
 import { isModOrAdmin } from "../lib/userLevel.js";
@@ -7,6 +7,7 @@ import { escapeHtml } from "../lib/escape.js";
 import { markup } from "../lib/markup.js";
 import { formHiddenFields, validateQueryCsrf } from "../lib/csrf.js";
 import { loadUserGroupAcls, canMod, type ForumAclMap } from "../lib/permissions.js";
+import { describeIp } from "../lib/ipinfo.js";
 
 const modcp = new Hono();
 
@@ -136,7 +137,7 @@ modcp.get("/modcp", async (c) => {
     S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="f" value="${forumId}" />`),
     PAGINATION: "",
     PAGE_NUMBER: "Page 1 of 1",
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
     JUMPBOX: await fetchAndRenderJumpbox(supabase, undefined, { user }),
   });
 
@@ -558,7 +559,7 @@ modcp.get("/modcp/split", async (c) => {
     S_SPLIT_ACTION: "/modcp",
     S_FORUM_SELECT: markup(forumSelect),
     S_HIDDEN_FIELDS: formHiddenFields(c, `<input type="hidden" name="topic_id" value="${topicId}" />`),
-    S_TIMEZONE: "All times are GMT",
+    S_TIMEZONE: timezoneNotice(c),
   });
 
   if (posts) {
@@ -568,7 +569,7 @@ modcp.get("/modcp/split", async (c) => {
       tpl.assignBlockVars("postrow", {
         ROW_CLASS: rowClass,
         POSTER_NAME: post.poster?.username ?? "Guest",
-        POST_DATE: formatPhpBBDate(post.post_time),
+        POST_DATE: fmtDate(c, post.post_time),
         POST_SUBJECT: post.posts_text?.post_subject ?? "",
         MESSAGE: parseBBCode(post.posts_text?.post_text ?? ""),
         U_POST_ID: String(post.id),
@@ -792,6 +793,10 @@ modcp.get("/modcp/ip", async (c) => {
 
   const ip = post.poster_ip ?? "Unknown";
 
+  // What KIND of address is this? The counts below say how busy it is; this
+  // says whether it looks like a person's connection or a datacenter.
+  const ipReport = await describeIp(adminDb, post.poster_ip);
+
   // Count posts from this IP
   const { count: ipPostCount } = await adminDb
     .from("posts")
@@ -866,7 +871,15 @@ modcp.get("/modcp/ip", async (c) => {
     L_IP_INFO: "IP Information",
     L_THIS_POST_IP: "IP address for this post",
     IP: String(ip),
-    POSTS: `${ipPostCount ?? 0} posts`,
+    // The template has no slot for this, and themes are rendered unmodified —
+    // so the classification rides along in POSTS, which is already a
+    // free-text summary line.
+    POSTS: markup(
+      `${ipPostCount ?? 0} posts &middot; ${escapeHtml(ipReport.summary)}` +
+        (ipReport.classification.note
+          ? `<br /><span class="gensmall">${escapeHtml(ipReport.classification.note)}</span>`
+          : "")
+    ),
     U_LOOKUP_IP: `https://whatismyipaddress.com/ip/${ip}`,
     L_LOOKUP_IP: "Look up IP address",
     L_OTHER_USERS: "Users posting from this IP address",

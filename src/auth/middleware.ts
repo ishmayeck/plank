@@ -3,6 +3,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "../db/client.js";
 import { ACCESS_COOKIE_OPTS, REFRESH_COOKIE_OPTS, GUEST_SID_COOKIE_OPTS } from "./cookies.js";
+import { makeDateFormatter, type DateFormatter } from "../lib/datetime.js";
 
 export interface AuthUser {
   id: string;
@@ -13,6 +14,8 @@ export interface AuthUser {
   lastVisit: string | null;
   userSig: string;
   attachSig: boolean;
+  timezone: string;
+  dateFormat: string;
 }
 
 // Extend Hono's context variables
@@ -20,6 +23,8 @@ declare module "hono" {
   interface ContextVariableMap {
     user: AuthUser | null;
     supabase: ReturnType<typeof createClient>;
+    /** Date formatter bound to this viewer's timezone + format preference. */
+    fmt: DateFormatter;
   }
 }
 
@@ -62,7 +67,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       const [profileRes, unreadRes] = await Promise.all([
         adminDb
           .from("profiles")
-          .select("username, user_level, user_lastvisit, user_sig, user_attachsig")
+          .select("username, user_level, user_lastvisit, user_sig, user_attachsig, user_timezone, user_dateformat")
           .eq("id", data.session.user.id)
           .maybeSingle(),
         adminDb
@@ -83,6 +88,8 @@ export const authMiddleware = createMiddleware(async (c, next) => {
           lastVisit: profile.user_lastvisit,
           userSig: profile.user_sig ?? "",
           attachSig: profile.user_attachsig ?? false,
+          timezone: profile.user_timezone ?? "UTC",
+          dateFormat: profile.user_dateformat ?? "",
         };
       }
     }
@@ -90,6 +97,11 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 
   c.set("user", user);
   c.set("supabase", supabase);
+  // Built once per request from the viewer's own preferences. Deliberately on
+  // the context rather than a module-level "current user": two requests are
+  // in flight at once all the time, and a shared mutable would render one
+  // user's timestamps in another's timezone.
+  c.set("fmt", makeDateFormatter(user?.timezone, user?.dateFormat));
 
   // Track session for "who's online" — fire-and-forget, but log failures
   // so a broken sessions table doesn't go silently undetected.

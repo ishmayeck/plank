@@ -322,7 +322,10 @@ function renderRegisterPage(
     L_INDEX: "Index",
     U_INDEX: "/",
     L_REGISTRATION_INFO: "Registration Information",
-    L_ITEMS_REQUIRED: "Items marked with a * are required unless stated otherwise.",
+    L_ITEMS_REQUIRED: markup(
+      "Items marked with a * are required unless stated otherwise. " +
+        'By registering you agree to the <a href="/agreement">terms of use</a>.'
+    ),
     L_USERNAME: "Username",
     L_EMAIL_ADDRESS: "E-mail address",
     L_NEW_PASSWORD: "New password",

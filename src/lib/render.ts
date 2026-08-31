@@ -9,6 +9,8 @@ import {
   type ForumAclMap,
 } from "./permissions.js";
 import { currentStylesheet } from "./theme_runtime.js";
+import { formatPhpDate } from "./datetime.js";
+import type { Context } from "hono";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -21,24 +23,45 @@ const MONTHS = [
  * Full:      "Sun Mar 15, 2026 2:27 am"
  * Date-only: "15 Mar 2026"
  */
-export function formatPhpBBDate(
-  date: Date | string,
-  dateOnly = false
-): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  const day = d.getUTCDate().toString().padStart(2, "0");
-  const mon = MONTHS[d.getUTCMonth()];
-  const year = d.getUTCFullYear();
-
-  if (dateOnly) return `${day} ${mon} ${year}`;
-
-  const dayName = DAYS[d.getUTCDay()];
-  let hours = d.getUTCHours();
-  const ampm = hours >= 12 ? "pm" : "am";
-  hours = hours % 12 || 12;
-  const minutes = d.getUTCMinutes().toString().padStart(2, "0");
-  return `${dayName} ${mon} ${day}, ${year} ${hours}:${minutes} ${ampm}`;
+/**
+ * Format a date in the VIEWER's timezone and preferred format.
+ *
+ * The formatter is built per request in the auth middleware and read off the
+ * context here, so no caller has to thread the user's preferences through —
+ * and there is no shared mutable that concurrent requests could read each
+ * other's value from. Falls back to UTC + the phpBB2 default when no
+ * formatter is present (a route reached outside the middleware, e.g. a test).
+ */
+export function fmtDate(c: Context, date: Date | string): string {
+  const fmt = c.get("fmt");
+  return fmt ? fmt(date) : formatPhpDate(date);
 }
+
+/**
+ * The "All times are X" footer line, in the viewer's own zone.
+ *
+ * Hardcoded as "All times are GMT" on twelve pages, which was true only for
+ * users who had never set a timezone — and actively misleading once they had.
+ */
+export function timezoneNotice(c: Context): string {
+  const fmt = c.get("fmt");
+  return `All times are ${fmt ? fmt.abbreviation() : "UTC"}`;
+}
+
+/** Date without a time, for join dates and similar. */
+export function fmtDateOnly(c: Context, date: Date | string): string {
+  const fmt = c.get("fmt");
+  return fmt ? fmt.dateOnly(date) : formatPhpDate(date, "d M Y");
+}
+
+/**
+ * Timezone-independent formatting, for the few places that genuinely have no
+ * viewer (background jobs) or already hold a bound formatter.
+ */
+export function formatPhpBBDate(date: Date | string, dateOnly = false): string {
+  return dateOnly ? formatPhpDate(date, "d M Y") : formatPhpDate(date);
+}
+
 
 export interface RenderContext {
   user?: {

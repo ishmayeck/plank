@@ -367,11 +367,30 @@ deployment's real asset origins are pinned down.
 
 **Goal**: Features deferred from earlier chunks.
 
-- [ ] Topic watching (subscribe to email notifications)
-- [ ] "Mark forums/topics read" tracking (per-user, not just a redirect)
-- [ ] Agreement/ToS page — renders `agreement.tpl`
+- [x] Topic watching ✅ — in-board rather than email. `topics_watch` shipped
+  with the initial schema and nothing ever read it; watch/unwatch on a topic,
+  watchers flagged when a reply lands (except the author), a
+  `/search?mode=watched` view, and the flag cleared when the watcher looks.
+  **Deliberately not email**: SMTP credentials, deliverability, bounces and an
+  unsubscribe obligation is a lot of machinery for a private forum whose
+  members are already visiting — the same reasoning that cut mass email.
+  `notify_status` is already the flag a sender would drive from if that
+  changes.
+- [x] "Mark forums/topics read" tracking ✅ — three watermarks (topic, forum,
+  whole board), batched one query per page rather than one per row. Folder
+  icons finally mean something.
+- [x] Agreement/ToS page ✅ — `/agreement`, text from board config so an owner
+  can set their own terms, linked from registration.
 - [ ] Error and confirmation pages (`error_body.tpl`, `confirm_body.tpl`, `message_body.tpl`)
-- [ ] IP intelligence: enrich poster IPs with ASN/org info via local MaxMind GeoLite2 lookup (no per-request external API calls). Display in mod view to flag VPN/datacenter/hosting ranges. See "IP intelligence + bot protection" notes below for the full modern shape.
+- [x] IP intelligence ✅ — two tiers. Structural classification is pure logic
+  (RFC-defined ranges: private/CGNAT/loopback/etc, v4 and v6, seeing through
+  IPv4-mapped v6); known-network lookup uses a Postgres `cidr` column with a
+  GiST index, populated offline by `scripts/load-ip-ranges.ts` from the prefix
+  lists providers publish about themselves. Not MaxMind: no licence key, no
+  10MB data file in the deploy, and no per-request external call — verified
+  against real data, 13,490 prefixes. Commercial VPN-detection lists
+  deliberately excluded (licensed, and wrong often enough that a false "VPN"
+  label beside a member's name is worse than no label).
 - [~] ~~Mass email to all users or groups~~ — **intentionally omitted**. Useful in 2005; in 2026 it's trivial to export the user list into Mailchimp / Buttondown / a self-hosted mailing-list platform and run campaigns there. Keeping mail-blast functionality in the forum invites compliance burden (CAN-SPAM, GDPR, deliverability reputation) for negligible benefit.
 - [ ] New PM notification popup
 - [ ] Performance review: query optimization, N+1 audit, indexes where
@@ -428,7 +447,7 @@ need a deeper design pass than fits in a mechanical refactor.
   Fails open on RPC error. `SKIP_RATE_LIMIT=1` test bypass mirrors
   `SKIP_CSRF`. `src/lib/rate_limit.ts` +
   `supabase/migrations/20260531000001_rate_limits.sql` + 9 tests.
-- [ ] **Honor user timezone preference end-to-end.** The profile form
+- [x] **Honor user timezone preference end-to-end.** ✅ (2026-08-30) The profile form
   already collects a `TIMEZONE_SELECT` value (`profiles.user_timezone`,
   `profiles.user_dateformat`), but `formatPhpBBDate` in
   `src/lib/render.ts` hardcodes UTC. Threading the user's zone through
